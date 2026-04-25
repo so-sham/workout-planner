@@ -11,16 +11,17 @@
  *
  * @returns {JSX.Element}
  */
-import { useState, useEffect, useReducer } from 'react';
+import { useState, useEffect, useReducer, Suspense, lazy } from 'react';
 import { loadSettings, saveSettings, savePlan, saveWorkout, loadPRs, savePR } from './utils/storage';
 import { uid, todayISO, normalizeExerciseName, epley, computeStats, DOW_SHORT_TO_INDEX } from './utils/helpers';
 import Icon from './components/Icon';
-import Generator from './components/generator/Generator';
-import ActiveWorkout from './components/logger/ActiveWorkout';
-import Planner from './components/planner/Planner';
-import History from './components/history/History';
-import Progress from './components/progress/Progress';
-import SettingsModal from './components/settings/SettingsModal';
+
+const Generator = lazy(() => import('./components/generator/Generator'));
+const ActiveWorkout = lazy(() => import('./components/logger/ActiveWorkout'));
+const Planner = lazy(() => import('./components/planner/Planner'));
+const History = lazy(() => import('./components/history/History'));
+const Progress = lazy(() => import('./components/progress/Progress'));
+const SettingsModal = lazy(() => import('./components/settings/SettingsModal'));
 
 export default function App() {
   // ── Global state ────────────────────────────────────────────────────────
@@ -246,46 +247,57 @@ export default function App() {
 
       {/* ── Main Content ───────────────────────────────────────────────── */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
-        {tab === "generator" && (
-          <Generator
-            settings={settings}
-            setSettings={setSettings}
-            currentPlan={currentPlan}
-            onGenerated={setCurrentPlan}
-            onStart={startWorkout}
-            onSavePlan={savePlanToLibrary}
-            showToast={showToast}
-          />
-        )}
-        {tab === "logger" && activeSession && (
-          <ActiveWorkout
-            session={activeSession}
-            setSession={setActiveSession}
-            onFinish={finishWorkout}
-            onCancel={cancelWorkout}
-          />
-        )}
-        {tab === "planner" && (
-          <Planner
-            refreshCounter={refreshCounter}
-            bumpRefresh={bumpRefresh}
-            onStart={startWorkout}
-            showToast={showToast}
-          />
-        )}
-        {tab === "history" && <History refreshCounter={refreshCounter} bumpRefresh={bumpRefresh} />}
-        {tab === "progress" && <Progress refreshCounter={refreshCounter} />}
+        <Suspense fallback={
+          <div className="flex flex-col items-center justify-center py-20 text-gold/50">
+            <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gold to-goldbright flex items-center justify-center text-ink pulse-gold mb-4">
+              <Icon name="flame" className="w-4 h-4" />
+            </div>
+            <p className="text-sm tracking-widest uppercase">Loading...</p>
+          </div>
+        }>
+          {tab === "generator" && (
+            <Generator
+              settings={settings}
+              setSettings={setSettings}
+              currentPlan={currentPlan}
+              onGenerated={setCurrentPlan}
+              onStart={startWorkout}
+              onSavePlan={savePlanToLibrary}
+              showToast={showToast}
+            />
+          )}
+          {tab === "logger" && activeSession && (
+            <ActiveWorkout
+              session={activeSession}
+              setSession={setActiveSession}
+              onFinish={finishWorkout}
+              onCancel={cancelWorkout}
+            />
+          )}
+          {tab === "planner" && (
+            <Planner
+              refreshCounter={refreshCounter}
+              bumpRefresh={bumpRefresh}
+              onStart={startWorkout}
+              showToast={showToast}
+            />
+          )}
+          {tab === "history" && <History refreshCounter={refreshCounter} bumpRefresh={bumpRefresh} />}
+          {tab === "progress" && <Progress refreshCounter={refreshCounter} />}
+        </Suspense>
       </main>
 
       {/* ── Settings Modal ─────────────────────────────────────────────── */}
       {settingsOpen && (
-        <SettingsModal
-          settings={settings}
-          setSettings={setSettings}
-          onClose={() => setSettingsOpen(false)}
-          showToast={showToast}
-          bumpRefresh={bumpRefresh}
-        />
+        <Suspense fallback={null}>
+          <SettingsModal
+            settings={settings}
+            setSettings={setSettings}
+            onClose={() => setSettingsOpen(false)}
+            showToast={showToast}
+            bumpRefresh={bumpRefresh}
+          />
+        </Suspense>
       )}
 
       {/* ── Toast ──────────────────────────────────────────────────────── */}
