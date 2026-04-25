@@ -1,0 +1,37 @@
+{
+  "name": "workout-planner",
+  "version": "1.0.0",
+  "description": "A single-page workout planner and tracker that acts as a celebrity-grade AI personal trainer. Generates workouts across seven categories (Barbell Strength, Dumbbell Strength, Compound Lifts, HIIT, Circuit Training, Hyrox-Style, Full Gym), logs sets live, tracks progress with PR detection and key-lift 1RM charts, and stores everything locally in the browser.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/so-sham/workout-planner.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/so-sham/workout-planner/issues"
+  },
+  "homepage": "https://github.com/so-sham/workout-planner#readme",
+  "dependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "recharts": "^3.8.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^4.2.4",
+    "vite": "^8.0.10"
+  }
+}

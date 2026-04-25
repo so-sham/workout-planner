@@ -1,0 +1,2809 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>FORGE — AI Celebrity Personal Trainer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: "#0a0a0a",
+              carbon: "#111113",
+              steel: "#1a1a1e",
+              slate2: "#2a2a30",
+              gold: "#d4af37",
+              goldbright: "#f5cf5d",
+              ember: "#ff6a1a",
+              emberbright: "#ff8a3d",
+            },
+            fontFamily: {
+              display: ["'Bebas Neue'", "Impact", "sans-serif"],
+              sans: ["Inter", "system-ui", "sans-serif"],
+            },
+            boxShadow: {
+              gold: "0 0 0 1px rgba(212,175,55,0.3), 0 12px 40px -12px rgba(212,175,55,0.35)",
+              ember: "0 0 0 1px rgba(255,106,26,0.35), 0 12px 40px -12px rgba(255,106,26,0.45)",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      html, body, #root { background: #0a0a0a; color: #f5f5f5; }
+      body { font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+      .display { font-family: "Bebas Neue", Impact, sans-serif; letter-spacing: 0.02em; }
+      .noise { background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px); background-size: 3px 3px; }
+      @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+      .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+      @keyframes pulse-gold { 0%,100% { box-shadow: 0 0 0 0 rgba(212,175,55,0.6); } 50% { box-shadow: 0 0 0 10px rgba(212,175,55,0); } }
+      .pulse-gold { animation: pulse-gold 1.6s infinite; }
+      input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      input[type=number] { -moz-appearance: textfield; }
+      .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    </style>
+    <script>
+      // window.storage shim over localStorage
+      (function () {
+        if (window.storage && typeof window.storage.getItem === "function") return;
+        const ls = window.localStorage;
+        window.storage = {
+          getItem: (k) => ls.getItem(k),
+          setItem: (k, v) => ls.setItem(k, v),
+          removeItem: (k) => ls.removeItem(k),
+          keys: () => {
+            const out = [];
+            for (let i = 0; i < ls.length; i++) out.push(ls.key(i));
+            return out;
+          },
+        };
+      })();
+    </script>
+  </head>
+  <body class="min-h-screen">
+    <div id="root"></div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+    <script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel" data-presets="env,react">
+      const { useState, useEffect, useMemo, useReducer, useRef, useCallback } = React;
+      const {
+        ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+        Tooltip, Legend,
+      } = Recharts;
+
+      /* ----------------------------- constants ---------------------------- */
+
+      const CATEGORIES = [
+        { id: "barbell", label: "Barbell Strength", blurb: "Iron meets intent.", group: "strength" },
+        { id: "dumbbell", label: "Dumbbell Strength", blurb: "Unilateral dominance.", group: "strength" },
+        { id: "compound", label: "Compound Lifts", blurb: "Big 4. No fluff.", group: "strength" },
+        { id: "olympic", label: "Olympic Lifts", blurb: "Snatch. Clean. Jerk.", group: "strength" },
+        { id: "hiit", label: "HIIT", blurb: "Redline on demand.", group: "conditioning" },
+        { id: "circuit", label: "Circuit Training", blurb: "Flow state programming.", group: "conditioning" },
+        { id: "hyrox", label: "Hyrox-Style", blurb: "Functional fitness racing.", group: "conditioning" },
+        { id: "crossfit", label: "CrossFit", blurb: "WODs, AMRAPs, EMOMs.", group: "conditioning" },
+        { id: "fullgym", label: "Full Gym", blurb: "Use every tool in the room.", group: "strength" },
+        { id: "gymcardio", label: "Gym Cardio", blurb: "Treadmill, rower, bike, erg.", group: "cardio" },
+        { id: "floorcardio", label: "Floor Cardio", blurb: "No machines. Just you.", group: "cardio" },
+      ];
+
+      const CATEGORY_GROUPS = [
+        { id: "strength", label: "Strength" },
+        { id: "conditioning", label: "Conditioning" },
+        { id: "cardio", label: "Cardio" },
+      ];
+
+      const BODY_PARTS = [
+        { id: "full", label: "Full Body" },
+        { id: "upper", label: "Upper" },
+        { id: "lower", label: "Lower" },
+        { id: "push", label: "Push" },
+        { id: "pull", label: "Pull" },
+        { id: "legs", label: "Legs" },
+        { id: "chest", label: "Chest" },
+        { id: "back", label: "Back" },
+        { id: "shoulders", label: "Shoulders" },
+        { id: "arms", label: "Arms" },
+        { id: "core", label: "Core" },
+        { id: "glutes", label: "Glutes" },
+        { id: "posterior", label: "Posterior Chain" },
+      ];
+
+      const PLAN_MODES = [
+        { id: "single", label: "One-off Session", blurb: "Today's workout." },
+        { id: "weekly", label: "Weekly Plan", blurb: "Structured split, Mon–Sun." },
+      ];
+
+      const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+      const WEEKLY_SPLITS = {
+        3: [
+          { day: "Mon", focus: "Full Body A", parts: ["full"] },
+          { day: "Tue", focus: "Rest", isRest: true },
+          { day: "Wed", focus: "Full Body B", parts: ["full"] },
+          { day: "Thu", focus: "Rest", isRest: true },
+          { day: "Fri", focus: "Full Body C", parts: ["full"] },
+          { day: "Sat", focus: "Active Recovery", isRest: true },
+          { day: "Sun", focus: "Rest", isRest: true },
+        ],
+        4: [
+          { day: "Mon", focus: "Upper", parts: ["upper"] },
+          { day: "Tue", focus: "Lower", parts: ["lower"] },
+          { day: "Wed", focus: "Rest", isRest: true },
+          { day: "Thu", focus: "Upper", parts: ["upper"] },
+          { day: "Fri", focus: "Lower", parts: ["lower"] },
+          { day: "Sat", focus: "Rest", isRest: true },
+          { day: "Sun", focus: "Rest", isRest: true },
+        ],
+        5: [
+          { day: "Mon", focus: "Push", parts: ["push"] },
+          { day: "Tue", focus: "Pull", parts: ["pull"] },
+          { day: "Wed", focus: "Legs", parts: ["legs"] },
+          { day: "Thu", focus: "Upper", parts: ["upper"] },
+          { day: "Fri", focus: "Lower", parts: ["lower"] },
+          { day: "Sat", focus: "Active Recovery", isRest: true },
+          { day: "Sun", focus: "Rest", isRest: true },
+        ],
+        6: [
+          { day: "Mon", focus: "Push", parts: ["push"] },
+          { day: "Tue", focus: "Pull", parts: ["pull"] },
+          { day: "Wed", focus: "Legs", parts: ["legs"] },
+          { day: "Thu", focus: "Push", parts: ["push"] },
+          { day: "Fri", focus: "Pull", parts: ["pull"] },
+          { day: "Sat", focus: "Legs", parts: ["legs"] },
+          { day: "Sun", focus: "Rest", isRest: true },
+        ],
+      };
+
+      const INTENSITIES = [
+        { id: "light", label: "Light" },
+        { id: "moderate", label: "Moderate" },
+        { id: "heavy", label: "Heavy" },
+        { id: "max", label: "Max Effort" },
+      ];
+
+      const LEVELS = [
+        { id: "beginner", label: "Beginner" },
+        { id: "intermediate", label: "Intermediate" },
+        { id: "advanced", label: "Advanced" },
+        { id: "elite", label: "Elite" },
+      ];
+
+      const CYCLES = [
+        { id: "hypertrophy", label: "Hypertrophy" },
+        { id: "strength", label: "Strength" },
+        { id: "power", label: "Power" },
+        { id: "deload", label: "Deload" },
+        { id: "endurance", label: "Endurance" },
+        { id: "competition", label: "Competition Prep" },
+      ];
+
+      const CYCLE_PRESCRIPTION = {
+        hypertrophy: { sets: 4, reps: "8-12", tempo: "3-1-1-0", rest: "60-90s" },
+        strength: { sets: 5, reps: "3-5", tempo: "2-1-1-0", rest: "2-3 min" },
+        power: { sets: 5, reps: "1-3", tempo: "X-1-1-0", rest: "3 min" },
+        deload: { sets: 3, reps: "8-10", tempo: "2-1-1-0", rest: "60s" },
+        endurance: { sets: 3, reps: "12-20", tempo: "2-0-1-0", rest: "45s" },
+        competition: { sets: 4, reps: "2-3", tempo: "X-1-1-0", rest: "3 min" },
+      };
+
+      const INTENSITY_LOAD = {
+        light: "55-65% 1RM",
+        moderate: "65-75% 1RM",
+        heavy: "75-85% 1RM",
+        max: "85-95% 1RM",
+      };
+
+      const CONDITIONING_PRESCRIPTION = {
+        light: { work: "30s", rest: "60s", rounds: 6 },
+        moderate: { work: "40s", rest: "40s", rounds: 8 },
+        heavy: { work: "45s", rest: "30s", rounds: 10 },
+        max: { work: "60s", rest: "30s", rounds: 10 },
+      };
+
+      const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const DOW_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const DOW_SHORT_TO_INDEX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+      const LOCAL_EXERCISES = {
+        barbell: [
+          { name: "Back Squat", cue: "Drive the floor away. Brace 360°." },
+          { name: "Bench Press", cue: "Bar path over the sternum. Leg drive." },
+          { name: "Deadlift", cue: "Bar against shins. Push hips forward." },
+          { name: "Overhead Press", cue: "Squeeze the bar. Glutes locked." },
+          { name: "Bent-Over Row", cue: "Hinge to 45°. Pull elbows past ribs." },
+          { name: "Front Squat", cue: "Elbows high. Stay tall." },
+          { name: "Romanian Deadlift", cue: "Hips back. Bar grazes legs." },
+          { name: "Push Press", cue: "Dip, drive, lockout." },
+        ],
+        dumbbell: [
+          { name: "DB Bench Press", cue: "Press in. Squeeze the chest." },
+          { name: "DB Row", cue: "Pull to the hip. Don't shrug." },
+          { name: "DB Goblet Squat", cue: "Heels down. Elbows inside knees." },
+          { name: "DB Shoulder Press", cue: "Stack the wrist over the elbow." },
+          { name: "DB Lunge", cue: "Knee tracks over the foot. Stand tall." },
+          { name: "DB RDL", cue: "Soft knees. Push the wall back with your hips." },
+          { name: "DB Curl", cue: "No swing. Squeeze the bicep top." },
+          { name: "DB Lateral Raise", cue: "Lead with the elbow. Pause at parallel." },
+        ],
+        compound: [
+          { name: "Back Squat", cue: "Drive the floor away. Brace 360°." },
+          { name: "Bench Press", cue: "Bar path over the sternum. Leg drive." },
+          { name: "Deadlift", cue: "Bar against shins. Push hips forward." },
+          { name: "Overhead Press", cue: "Squeeze the bar. Glutes locked." },
+          { name: "Pull-Up", cue: "Pull chest to the bar. Full hang." },
+          { name: "Front Squat", cue: "Elbows high. Stay tall." },
+        ],
+        olympic: [
+          { name: "Power Clean", cue: "Bar close. Triple extension. Catch tall." },
+          { name: "Hang Clean", cue: "Pockets to lockout. Fast under." },
+          { name: "Power Snatch", cue: "Wide grip. Bar accelerates off the hip." },
+          { name: "Hang Snatch", cue: "Push the floor. Punch overhead." },
+          { name: "Clean & Jerk", cue: "Rebend, drive, split. Stand it out." },
+          { name: "Push Press", cue: "Dip, drive, lockout." },
+          { name: "Split Jerk", cue: "Front foot forward. Press under." },
+          { name: "Overhead Squat", cue: "Active shoulders. Open the chest." },
+          { name: "Snatch Pull", cue: "Patience off the floor. Finish tall." },
+          { name: "Clean Pull", cue: "Bar in close. Shrug at the top." },
+          { name: "Snatch High Pull", cue: "Elbows high and outside." },
+        ],
+        hiit: [
+          { name: "Burpee", cue: "Chest to deck. Jump and clap." },
+          { name: "Box Jump", cue: "Land soft. Stand all the way up." },
+          { name: "Mountain Climbers", cue: "Hips low. Drive the knees." },
+          { name: "Jumping Lunge", cue: "Switch quick. Soft landings." },
+          { name: "Push-Up", cue: "Body in a straight line. Full lockout." },
+          { name: "Air Squat", cue: "Sit back. Knees out." },
+        ],
+        circuit: [
+          { name: "Kettlebell Swing", cue: "Hike, snap, float. Glutes finish." },
+          { name: "Goblet Squat", cue: "Heels down. Stay tall." },
+          { name: "Push-Up", cue: "Plank tight. Full press." },
+          { name: "Renegade Row", cue: "Don't twist. Row to the hip." },
+          { name: "DB Thruster", cue: "Squat to press in one rhythm." },
+          { name: "Reverse Lunge", cue: "Step long. Drive through the heel." },
+        ],
+        hyrox: [
+          { name: "SkiErg 250m", cue: "Long pulls. Hips snap." },
+          { name: "Sled Push 25m", cue: "Stay low. Short, fast steps." },
+          { name: "Sled Pull 25m", cue: "Pull hand-over-hand. Lean back." },
+          { name: "Burpee Broad Jump", cue: "Power up, jump out." },
+          { name: "Rower 500m", cue: "Legs–back–arms. Reverse the order." },
+          { name: "Farmer Carry 50m", cue: "Tall posture. Crush the handles." },
+          { name: "Sandbag Lunges", cue: "Weight on the back. Knee taps the floor." },
+          { name: "Wall Balls", cue: "Squat–throw. Catch and ride down." },
+        ],
+        crossfit: [
+          { name: "Thruster", cue: "Front squat into a press. One motion." },
+          { name: "Pull-Up", cue: "Chest to bar. Stay tight." },
+          { name: "Box Jump", cue: "Hip extension. Stand tall up top." },
+          { name: "Wall Ball", cue: "Squat below parallel. Drive through." },
+          { name: "Toes-to-Bar", cue: "Kip rhythm. Toes to the metal." },
+          { name: "KB Swing", cue: "Hinge. Snap the hips at lockout." },
+          { name: "Burpee", cue: "Chest to deck. Stand and clap." },
+          { name: "Power Clean", cue: "Triple extension. Land in a partial squat." },
+        ],
+        fullgym: [
+          { name: "Back Squat", cue: "Drive the floor away. Brace 360°." },
+          { name: "Bench Press", cue: "Bar over the sternum." },
+          { name: "Cable Row", cue: "Pull to the belly button. Squeeze." },
+          { name: "Lat Pulldown", cue: "Drive the elbows down and back." },
+          { name: "Leg Press", cue: "Knees to chest. Drive through the heels." },
+          { name: "Hip Thrust", cue: "Bar over the hips. Squeeze the glutes." },
+          { name: "DB Curl", cue: "Slow eccentric. No swing." },
+          { name: "Tricep Pushdown", cue: "Elbows pinned. Full lockout." },
+        ],
+        gymcardio: [
+          { name: "Treadmill Intervals", cue: "Drive the knees. Quiet feet." },
+          { name: "Rower 500m", cue: "Legs first. Smooth handle path." },
+          { name: "Assault Bike", cue: "Punch and pull. Don't bounce." },
+          { name: "Stairmill", cue: "Stand tall. Don't lean on the rails." },
+          { name: "SkiErg", cue: "Hinge with the cables. Drive the elbows." },
+          { name: "Echo Bike Sprint", cue: "All-out. Recover full." },
+        ],
+        floorcardio: [
+          { name: "Run-in-Place", cue: "Drive the knees. Stay light." },
+          { name: "Jumping Jacks", cue: "Reach overhead. Full extension." },
+          { name: "High Knees", cue: "Knees above the hip crease." },
+          { name: "Burpee", cue: "Chest to deck. Stand and clap." },
+          { name: "Mountain Climber", cue: "Drive the knees. Hips low." },
+          { name: "Jump Rope", cue: "Wrists, not arms. Soft landings." },
+        ],
+      };
+
+      const WARMUP_POOL = {
+        strength: [
+          { name: "World's Greatest Stretch", duration: "5/side", cue: "Open the hips. Rotate the ribs." },
+          { name: "Hip CARs", duration: "5/side", cue: "Slow circles. Full range." },
+          { name: "Glute Bridge", duration: "10 reps", cue: "Pause at the top. Squeeze." },
+          { name: "Cat-Cow", duration: "8 reps", cue: "Move one segment at a time." },
+          { name: "Empty-Bar Practice", duration: "1 round", cue: "Groove the lift. Set the cues." },
+          { name: "Banded Pull-Apart", duration: "15 reps", cue: "Squeeze the shoulder blades." },
+        ],
+        conditioning: [
+          { name: "Jog in Place", duration: "60s", cue: "Quiet feet. Easy pace." },
+          { name: "Inchworm", duration: "6 reps", cue: "Reach long. Pause in plank." },
+          { name: "Air Squat", duration: "15 reps", cue: "Sit back. Knees out." },
+          { name: "A-Skip", duration: "30s", cue: "Drive the knee. Snappy arms." },
+          { name: "Push-Up", duration: "10 reps", cue: "Plank tight. Full press." },
+          { name: "Lateral Lunge", duration: "5/side", cue: "Sit into one hip. Stay tall." },
+        ],
+        cardio: [
+          { name: "Easy Jog", duration: "2 min", cue: "Talk pace. Get the legs warm." },
+          { name: "Skip Rope", duration: "60s", cue: "Soft, quick contacts." },
+          { name: "Leg Swings", duration: "10/side", cue: "Front-back, then side-side." },
+          { name: "High Knees", duration: "30s", cue: "Knees above the hip crease." },
+          { name: "Dynamic Lunge", duration: "5/side", cue: "Long step. Sink the back knee." },
+          { name: "Arm Circles", duration: "10 each way", cue: "Big circles. Open the chest." },
+        ],
+      };
+
+      const COOLDOWN_POOL = [
+        { name: "Box Breathing", duration: "2 min", cue: "Inhale 4, hold 4, exhale 4, hold 4." },
+        { name: "Childs Pose", duration: "60s", cue: "Hips to heels. Reach long." },
+        { name: "Couch Stretch", duration: "60s/side", cue: "Tall hips. Squeeze the glute." },
+        { name: "Pigeon Pose", duration: "60s/side", cue: "Square the hips. Breathe into the stretch." },
+        { name: "Foam Roll", duration: "5 min", cue: "Slow passes. Pause on hot spots." },
+        { name: "90/90 Hip Switch", duration: "60s", cue: "Slow rotations. Stay tall." },
+      ];
+
+      const EXERCISE_LIBRARY = [
+        { name: "Back Squat", pattern: "squat", parts: ["legs", "lower"], equipment: ["barbell"], defaults: { sets: 5, reps: "5", tempo: "3-1-1-0", rest: "2-3 min", load: "75-85% 1RM", cue: "Drive the floor away. Brace 360°." } },
+        { name: "Front Squat", pattern: "squat", parts: ["legs", "lower"], equipment: ["barbell"], defaults: { sets: 4, reps: "5", tempo: "3-1-1-0", rest: "2 min", load: "70-80% 1RM", cue: "Elbows high. Stay tall." } },
+        { name: "Deadlift", pattern: "hinge", parts: ["posterior", "lower", "back"], equipment: ["barbell"], defaults: { sets: 5, reps: "3", tempo: "1-0-1-0", rest: "3 min", load: "80-90% 1RM", cue: "Bar against shins. Push the floor away." } },
+        { name: "Romanian Deadlift", pattern: "hinge", parts: ["posterior", "glutes"], equipment: ["barbell"], defaults: { sets: 4, reps: "8", tempo: "3-1-1-0", rest: "90s", load: "60-70% 1RM", cue: "Hips back. Bar grazes the legs." } },
+        { name: "Bench Press", pattern: "push", parts: ["push", "chest", "upper"], equipment: ["barbell"], defaults: { sets: 5, reps: "5", tempo: "3-1-1-0", rest: "2-3 min", load: "75-85% 1RM", cue: "Bar over the sternum. Drive the legs." } },
+        { name: "Incline Bench Press", pattern: "push", parts: ["push", "chest", "shoulders"], equipment: ["barbell"], defaults: { sets: 4, reps: "8", tempo: "3-1-1-0", rest: "90s", load: "65-75% 1RM", cue: "Press up and back. Squeeze the chest." } },
+        { name: "Overhead Press", pattern: "push", parts: ["push", "shoulders"], equipment: ["barbell"], defaults: { sets: 5, reps: "5", tempo: "2-1-1-0", rest: "2 min", load: "65-75% 1RM", cue: "Squeeze the bar. Glutes locked." } },
+        { name: "Push Press", pattern: "push", parts: ["push", "shoulders"], equipment: ["barbell"], defaults: { sets: 5, reps: "3", tempo: "X-1-1-0", rest: "2 min", load: "70-80% 1RM", cue: "Dip, drive, lockout." } },
+        { name: "Pull-Up", pattern: "pull", parts: ["pull", "back", "upper"], equipment: ["bodyweight"], defaults: { sets: 4, reps: "6-10", tempo: "2-1-1-0", rest: "2 min", load: "BW", cue: "Chest to the bar. Full hang." } },
+        { name: "Bent-Over Row", pattern: "pull", parts: ["pull", "back"], equipment: ["barbell"], defaults: { sets: 4, reps: "8", tempo: "3-1-1-0", rest: "90s", load: "60-70% 1RM", cue: "Hinge to 45°. Pull elbows past the ribs." } },
+        { name: "DB Row", pattern: "pull", parts: ["pull", "back"], equipment: ["dumbbell"], defaults: { sets: 4, reps: "10", tempo: "2-1-1-0", rest: "60s", load: "moderate", cue: "Pull to the hip. Don't shrug." } },
+        { name: "Lat Pulldown", pattern: "pull", parts: ["pull", "back"], equipment: ["machine"], defaults: { sets: 3, reps: "10-12", tempo: "2-1-1-0", rest: "60s", load: "moderate", cue: "Drive the elbows down and back." } },
+        { name: "Power Clean", pattern: "olympic", parts: ["full", "posterior"], equipment: ["barbell"], defaults: { sets: 5, reps: "3", tempo: "X-0-1-0", rest: "2 min", load: "70-80% 1RM", cue: "Bar close. Triple extension. Catch tall." } },
+        { name: "Power Snatch", pattern: "olympic", parts: ["full", "posterior"], equipment: ["barbell"], defaults: { sets: 5, reps: "2", tempo: "X-0-1-0", rest: "2-3 min", load: "65-75% 1RM", cue: "Wide grip. Bar accelerates off the hip." } },
+        { name: "Clean & Jerk", pattern: "olympic", parts: ["full"], equipment: ["barbell"], defaults: { sets: 5, reps: "1+1", tempo: "X-0-1-0", rest: "3 min", load: "75-85% 1RM", cue: "Rebend, drive, split." } },
+        { name: "Hip Thrust", pattern: "hinge", parts: ["glutes", "posterior"], equipment: ["barbell"], defaults: { sets: 4, reps: "8", tempo: "2-2-1-0", rest: "90s", load: "moderate", cue: "Bar over the hips. Squeeze the glutes." } },
+        { name: "Walking Lunge", pattern: "lunge", parts: ["legs", "lower"], equipment: ["dumbbell"], defaults: { sets: 3, reps: "10/side", tempo: "2-1-1-0", rest: "60s", load: "moderate", cue: "Step long. Drive through the heel." } },
+        { name: "Bulgarian Split Squat", pattern: "lunge", parts: ["legs", "glutes"], equipment: ["dumbbell"], defaults: { sets: 3, reps: "8/side", tempo: "3-1-1-0", rest: "60s", load: "moderate", cue: "Vertical torso. Knee tracks over the foot." } },
+        { name: "DB Bench Press", pattern: "push", parts: ["push", "chest"], equipment: ["dumbbell"], defaults: { sets: 4, reps: "10", tempo: "3-1-1-0", rest: "60s", load: "moderate", cue: "Press in. Squeeze the chest." } },
+        { name: "DB Shoulder Press", pattern: "push", parts: ["push", "shoulders"], equipment: ["dumbbell"], defaults: { sets: 4, reps: "10", tempo: "2-1-1-0", rest: "60s", load: "moderate", cue: "Stack the wrist over the elbow." } },
+        { name: "DB Curl", pattern: "pull", parts: ["arms"], equipment: ["dumbbell"], defaults: { sets: 3, reps: "10", tempo: "2-1-1-0", rest: "45s", load: "moderate", cue: "No swing. Squeeze the bicep at the top." } },
+        { name: "Tricep Pushdown", pattern: "push", parts: ["arms"], equipment: ["cable"], defaults: { sets: 3, reps: "12", tempo: "2-1-1-0", rest: "45s", load: "moderate", cue: "Elbows pinned. Full lockout." } },
+        { name: "Lateral Raise", pattern: "push", parts: ["shoulders"], equipment: ["dumbbell"], defaults: { sets: 3, reps: "12", tempo: "2-1-1-0", rest: "45s", load: "light", cue: "Lead with the elbow. Pause at parallel." } },
+        { name: "Face Pull", pattern: "pull", parts: ["pull", "shoulders"], equipment: ["cable"], defaults: { sets: 3, reps: "15", tempo: "2-1-1-0", rest: "45s", load: "light", cue: "Pull to the eyes. External rotate." } },
+        { name: "Plank", pattern: "core", parts: ["core"], equipment: ["bodyweight"], defaults: { sets: 3, reps: "45s", tempo: "—", rest: "30s", load: "BW", cue: "Ribs down. Glutes squeezed." } },
+        { name: "Hanging Leg Raise", pattern: "core", parts: ["core"], equipment: ["bodyweight"], defaults: { sets: 3, reps: "10", tempo: "2-1-2-0", rest: "60s", load: "BW", cue: "No swing. Posterior tilt." } },
+        { name: "Russian Twist", pattern: "core", parts: ["core"], equipment: ["dumbbell"], defaults: { sets: 3, reps: "20", tempo: "—", rest: "45s", load: "light", cue: "Rotate from the ribs. Heels light." } },
+        { name: "Box Jump", pattern: "plyometric", parts: ["legs", "full"], equipment: ["box"], defaults: { sets: 4, reps: "5", tempo: "X-0-X-0", rest: "60s", load: "BW", cue: "Land soft. Stand all the way up." } },
+        { name: "Burpee", pattern: "conditioning", parts: ["full"], equipment: ["bodyweight"], defaults: { sets: 3, reps: "10", tempo: "—", rest: "60s", load: "BW", cue: "Chest to deck. Jump and clap." } },
+        { name: "Kettlebell Swing", pattern: "hinge", parts: ["posterior", "glutes", "full"], equipment: ["kettlebell"], defaults: { sets: 5, reps: "15", tempo: "X-0-X-0", rest: "60s", load: "moderate", cue: "Hike, snap, float." } },
+        { name: "Wall Ball", pattern: "conditioning", parts: ["full"], equipment: ["medicine ball"], defaults: { sets: 4, reps: "20", tempo: "—", rest: "60s", load: "moderate", cue: "Squat below parallel. Drive through." } },
+        { name: "Thruster", pattern: "conditioning", parts: ["full"], equipment: ["barbell"], defaults: { sets: 5, reps: "8", tempo: "X-0-X-0", rest: "90s", load: "moderate", cue: "Front squat into press. One motion." } },
+        { name: "Farmer Carry", pattern: "carry", parts: ["full", "core"], equipment: ["dumbbell"], defaults: { sets: 4, reps: "40m", tempo: "—", rest: "60s", load: "heavy", cue: "Tall posture. Crush the handles." } },
+        { name: "Rower 500m", pattern: "conditioning", parts: ["full"], equipment: ["rower"], defaults: { sets: 5, reps: "500m", tempo: "—", rest: "90s", load: "—", cue: "Legs–back–arms. Reverse the order." } },
+        { name: "Assault Bike Sprint", pattern: "conditioning", parts: ["full"], equipment: ["bike"], defaults: { sets: 6, reps: "30s", tempo: "—", rest: "60s", load: "all-out", cue: "Punch and pull. Don't bounce." } },
+      ];
+
+      const WARMUP_LIBRARY = [
+        { name: "World's Greatest Stretch", duration: "5/side", cue: "Open the hips. Rotate the ribs." },
+        { name: "Cat-Cow", duration: "8 reps", cue: "Move the spine one segment at a time." },
+        { name: "Hip CARs", duration: "5/side", cue: "Slow circles. Full range." },
+        { name: "Scapular Pull-Up", duration: "8 reps", cue: "Depress and retract. No arm bend." },
+        { name: "Band Pull-Apart", duration: "15 reps", cue: "Squeeze the shoulder blades." },
+        { name: "Glute Bridge", duration: "10 reps", cue: "Pause at the top. Squeeze." },
+        { name: "Inchworm", duration: "6 reps", cue: "Reach long. Pause in plank." },
+        { name: "Air Squat", duration: "15 reps", cue: "Sit back. Knees out." },
+        { name: "Lateral Lunge", duration: "5/side", cue: "Sit into one hip. Stay tall." },
+        { name: "Empty-Bar Practice", duration: "1 round", cue: "Groove the lift. Set the cues." },
+        { name: "A-Skip", duration: "30s", cue: "Drive the knee. Snappy arms." },
+        { name: "Leg Swings", duration: "10/side", cue: "Front-back, then side-side." },
+        { name: "Arm Circles", duration: "10 each way", cue: "Big circles. Open the chest." },
+        { name: "90/90 Hip Switch", duration: "60s", cue: "Slow rotations. Stay tall." },
+      ];
+
+      const COOLDOWN_LIBRARY = [
+        { name: "Box Breathing", duration: "2 min", cue: "Inhale 4, hold 4, exhale 4, hold 4." },
+        { name: "Childs Pose", duration: "60s", cue: "Hips to heels. Reach long." },
+        { name: "Couch Stretch", duration: "60s/side", cue: "Tall hips. Squeeze the glute." },
+        { name: "Pigeon Pose", duration: "60s/side", cue: "Square the hips. Breathe into the stretch." },
+        { name: "Foam Roll", duration: "5 min", cue: "Slow passes. Pause on hot spots." },
+        { name: "90/90 Hip Switch", duration: "60s", cue: "Slow rotations. Stay tall." },
+        { name: "Lying Hamstring Stretch", duration: "60s/side", cue: "Strap the foot. Keep the knee soft." },
+        { name: "Thread the Needle", duration: "45s/side", cue: "Open the t-spine. Sink the shoulder." },
+        { name: "Diaphragmatic Breathing", duration: "3 min", cue: "Belly first, then ribs." },
+      ];
+
+      const KEY_LIFTS = [
+        "Back Squat", "Front Squat", "Bench Press", "Incline Bench Press",
+        "Deadlift", "Romanian Deadlift", "Overhead Press", "Hip Thrust",
+      ];
+
+      const EXERCISE_ALIASES = {
+        "barbell back squat": "Back Squat",
+        "high bar squat": "Back Squat",
+        "low bar squat": "Back Squat",
+        "back squat": "Back Squat",
+        "bench": "Bench Press",
+        "barbell bench": "Bench Press",
+        "flat bench press": "Bench Press",
+        "incline bench": "Incline Bench Press",
+        "incline barbell bench": "Incline Bench Press",
+        "conventional deadlift": "Deadlift",
+        "deadlift": "Deadlift",
+        "rdl": "Romanian Deadlift",
+        "romanian dead": "Romanian Deadlift",
+        "ohp": "Overhead Press",
+        "press": "Overhead Press",
+        "barbell hip thrust": "Hip Thrust",
+        "front squat": "Front Squat",
+      };
+
+      const CONTEXTUAL_QUOTES = {
+        max: ["This is where champions are made.", "Heavy. Hungry. Hold the line.", "One more rep is the whole story."],
+        deload: ["Light weight, baby — feel the technique.", "Recovery is part of the work.", "Plant the seeds. Don't dig them up."],
+        olympic: ["Speed under the bar wins medals.", "Trust the position. Trust the pull.", "Be loud. Be fast. Be tall."],
+        default: ["Earn it.", "No half measures.", "Quiet work. Loud results.", "Body forged in iron, mind in fire."],
+      };
+
+      /* ----------------------------- storage ------------------------------ */
+
+      const STORAGE_KEYS = {
+        workout: (date, id) => `workouts:${date}:${id}`,
+        pr: (ex) => `prs:${ex}`,
+        settings: "profile:settings",
+        plan: (id) => `plans:${id}`,
+        schedule: (date) => `schedule:${date}`,
+      };
+
+      const DEFAULT_SETTINGS = {
+        apiKey: "",
+        defaultLevel: "intermediate",
+        defaultIntensity: "moderate",
+        defaultCycle: "hypertrophy",
+        favoriteCategories: ["barbell"],
+        preferLocalCoach: false,
+        defaultPlanMode: "single",
+        defaultDaysPerWeek: 4,
+        defaultBodyParts: ["full"],
+        defaultSessionCount: 1,
+      };
+
+      const loadSettings = () => {
+        try {
+          const raw = window.storage.getItem(STORAGE_KEYS.settings);
+          if (!raw) return { ...DEFAULT_SETTINGS };
+          return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+        } catch {
+          return { ...DEFAULT_SETTINGS };
+        }
+      };
+      const saveSettings = (s) =>
+        window.storage.setItem(STORAGE_KEYS.settings, JSON.stringify(s));
+
+      const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const todayISO = () => new Date().toISOString().slice(0, 10);
+
+      const normalizeProgram = (record) => {
+        if (!record) return record;
+        if (record.type === "program" && Array.isArray(record.days)) return record;
+        if (record.type === "weekly" && Array.isArray(record.days)) {
+          return {
+            ...record,
+            type: "program",
+            days: record.days.map((d) => ({
+              id: d.id || uid(),
+              label: d.day || d.label || "Day",
+              dow: d.dow != null ? d.dow : DOW_SHORT_TO_INDEX[(d.day || "").toLowerCase()] ?? null,
+              focus: d.focus || "",
+              isRest: !!d.isRest,
+              plan: d.isRest ? null : d.plan || null,
+            })),
+          };
+        }
+        const plan = record.plan || null;
+        return {
+          ...record,
+          type: "program",
+          days: [
+            {
+              id: uid(),
+              label: plan?.title || "Day 1",
+              dow: null,
+              focus: "",
+              isRest: false,
+              plan,
+            },
+          ],
+        };
+      };
+
+      const loadAllPlans = () => {
+        const out = [];
+        for (const k of window.storage.keys()) {
+          if (!k.startsWith("plans:")) continue;
+          try {
+            const parsed = JSON.parse(window.storage.getItem(k));
+            out.push(normalizeProgram(parsed));
+          } catch {}
+        }
+        return out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      };
+      const savePlan = (p) => {
+        const next = { ...p, updatedAt: Date.now() };
+        if (!next.createdAt) next.createdAt = next.updatedAt;
+        window.storage.setItem(STORAGE_KEYS.plan(next.id), JSON.stringify(next));
+        return next;
+      };
+      const deletePlan = (id) => {
+        window.storage.removeItem(STORAGE_KEYS.plan(id));
+        // prune from schedules
+        for (const k of window.storage.keys()) {
+          if (!k.startsWith("schedule:")) continue;
+          try {
+            const arr = JSON.parse(window.storage.getItem(k)) || [];
+            const next = arr.filter((e) => e.planId !== id);
+            if (next.length !== arr.length) {
+              if (next.length === 0) window.storage.removeItem(k);
+              else window.storage.setItem(k, JSON.stringify(next));
+            }
+          } catch {}
+        }
+      };
+
+      const loadSchedule = (date) => {
+        try {
+          const raw = window.storage.getItem(STORAGE_KEYS.schedule(date));
+          return raw ? JSON.parse(raw) : [];
+        } catch {
+          return [];
+        }
+      };
+      const writeSchedule = (date, arr) => {
+        if (!arr || arr.length === 0) window.storage.removeItem(STORAGE_KEYS.schedule(date));
+        else window.storage.setItem(STORAGE_KEYS.schedule(date), JSON.stringify(arr));
+      };
+      const addToSchedule = (date, planId, dayKey) => {
+        const arr = loadSchedule(date);
+        arr.push({ id: uid(), planId, dayKey: dayKey || null, addedAt: Date.now() });
+        writeSchedule(date, arr);
+      };
+      const removeFromSchedule = (date, entryId) => {
+        const arr = loadSchedule(date).filter((e) => e.id !== entryId);
+        writeSchedule(date, arr);
+      };
+      const loadAllSchedule = () => {
+        const map = {};
+        for (const k of window.storage.keys()) {
+          if (!k.startsWith("schedule:")) continue;
+          const date = k.slice("schedule:".length);
+          try {
+            map[date] = JSON.parse(window.storage.getItem(k)) || [];
+          } catch {}
+        }
+        return map;
+      };
+
+      const loadAllWorkouts = () => {
+        const out = [];
+        for (const k of window.storage.keys()) {
+          if (!k.startsWith("workouts:")) continue;
+          try {
+            out.push(JSON.parse(window.storage.getItem(k)));
+          } catch {}
+        }
+        return out.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+      };
+      const saveWorkout = (w) => {
+        window.storage.setItem(
+          STORAGE_KEYS.workout(w.date, w.id),
+          JSON.stringify(w)
+        );
+      };
+      const deleteWorkout = (date, id) =>
+        window.storage.removeItem(STORAGE_KEYS.workout(date, id));
+
+      const loadPRs = () => {
+        const out = {};
+        for (const k of window.storage.keys()) {
+          if (!k.startsWith("prs:")) continue;
+          const ex = k.slice("prs:".length);
+          try {
+            out[ex] = JSON.parse(window.storage.getItem(k));
+          } catch {}
+        }
+        return out;
+      };
+      const savePR = (ex, pr) =>
+        window.storage.setItem(STORAGE_KEYS.pr(ex), JSON.stringify(pr));
+
+      /* ----------------------------- helpers ------------------------------ */
+
+      const normalizeExerciseName = (name) => {
+        if (!name) return null;
+        const k = name.trim().toLowerCase();
+        if (EXERCISE_ALIASES[k]) return EXERCISE_ALIASES[k];
+        for (const lift of KEY_LIFTS) {
+          if (k.includes(lift.toLowerCase())) return lift;
+        }
+        return null;
+      };
+
+      const epley = (w, r) => Math.round(Number(w) * (1 + Number(r) / 30));
+
+      const inferBodyParts = (name) => {
+        const n = (name || "").toLowerCase();
+        const parts = [];
+        if (/squat|lunge|leg press|step.up|deadlift|rdl|hip thrust|glute|calf/.test(n)) parts.push("legs", "lower");
+        if (/bench|push.up|press|dip|chest fly/.test(n)) parts.push("push", "chest", "upper");
+        if (/row|pull.up|pulldown|chin.up|curl|face pull/.test(n)) parts.push("pull", "back", "upper");
+        if (/shoulder|overhead|lateral|raise|shrug/.test(n)) parts.push("shoulders", "upper");
+        if (/curl|tricep/.test(n)) parts.push("arms");
+        if (/plank|crunch|sit.up|toes.to|leg raise|russian|ab wheel/.test(n)) parts.push("core");
+        if (/glute|hip thrust|bridge/.test(n)) parts.push("glutes", "posterior");
+        if (/deadlift|rdl|good morning|kettlebell swing/.test(n)) parts.push("posterior", "back");
+        return parts.length ? parts : ["full"];
+      };
+
+      const matchesBodyParts = (name, focus) => {
+        if (!focus || focus.includes("full")) return true;
+        const parts = inferBodyParts(name);
+        return focus.some((f) => parts.includes(f));
+      };
+
+      const formatDate = (d) => {
+        try {
+          return new Date(d).toLocaleDateString(undefined, {
+            weekday: "short", month: "short", day: "numeric",
+          });
+        } catch {
+          return d;
+        }
+      };
+      const formatDuration = (ms) => {
+        const s = Math.floor(ms / 1000);
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        return `${m}:${sec.toString().padStart(2, "0")}`;
+      };
+
+      const pickQuote = ({ cycle, intensity, categories }) => {
+        if (intensity === "max") return rand(CONTEXTUAL_QUOTES.max);
+        if (cycle === "deload") return rand(CONTEXTUAL_QUOTES.deload);
+        if ((categories || []).includes("olympic")) return rand(CONTEXTUAL_QUOTES.olympic);
+        return rand(CONTEXTUAL_QUOTES.default);
+      };
+      const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+      const guessCategory = (title) => {
+        const t = (title || "").toLowerCase();
+        if (/hyrox/.test(t)) return "hyrox";
+        if (/crossfit|wod|amrap|emom/.test(t)) return "crossfit";
+        if (/circuit/.test(t)) return "circuit";
+        if (/hiit/.test(t)) return "hiit";
+        if (/olympic|snatch|clean|jerk/.test(t)) return "olympic";
+        if (/dumbbell|db /.test(t)) return "dumbbell";
+        if (/barbell/.test(t)) return "barbell";
+        if (/cardio|run|row|bike/.test(t)) return "gymcardio";
+        return "fullgym";
+      };
+
+      /* ------------------------- AI generation ---------------------------- */
+
+      const SYSTEM_PROMPT = `You are FORGE, a celebrity-grade personal trainer. You write workouts in strict JSON only — no preamble, no markdown fences.
+
+Schema:
+{
+  "title": string,
+  "tagline": string,
+  "estimatedMinutes": number,
+  "warmup": [{ "name": string, "duration": string, "cue": string }],
+  "mainBlock": [{ "name": string, "sets": number, "reps": string, "tempo": string, "rest": string, "load": string, "cue": string }],
+  "cooldown": [{ "name": string, "duration": string, "cue": string }],
+  "finisherNote": string
+}
+
+Rules:
+- Use canonical names for key lifts (Back Squat, Bench Press, Deadlift, Romanian Deadlift, Overhead Press, Front Squat, Incline Bench Press, Hip Thrust).
+- Olympic sessions: snatch / C&J + variants, technique-first, 1–5 reps, 2–4 min rest, include pulls/positional accessories.
+- Respect the user's intensity, level, cycle, and body-part focus.
+- Output ONLY the JSON object.`;
+
+      const buildUserPrompt = ({ categories, intensity, level, cycle, bodyParts, focusLabel }) => {
+        const cats = Array.isArray(categories) ? categories : [categories].filter(Boolean);
+        const catLabels = cats
+          .map((id) => CATEGORIES.find((c) => c.id === id)?.label || id)
+          .join(", ");
+        const lines = [
+          `Categories (blend these into one cohesive session): ${catLabels}.`,
+          `Intensity: ${intensity}.`,
+          `Level: ${level}.`,
+          `Cycle: ${cycle}.`,
+        ];
+        if (focusLabel) {
+          lines.push(focusLabel);
+        } else if (bodyParts && bodyParts.length && !bodyParts.includes("full")) {
+          const labels = bodyParts.map((p) => BODY_PARTS.find((b) => b.id === p)?.label || p);
+          lines.push(`Body-Part Focus: ${labels.join(", ")}.`);
+        }
+        if (cats.length > 1) {
+          lines.push(
+            "Fuse all listed categories into a single unified workout, sequenced strength → conditioning → cardio by default."
+          );
+        }
+        lines.push("Return JSON only.");
+        return lines.join("\n");
+      };
+
+      const parseLooseJSON = (text) => {
+        let t = text.trim();
+        t = t.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+        const i = t.indexOf("{");
+        const j = t.lastIndexOf("}");
+        if (i >= 0 && j > i) t = t.slice(i, j + 1);
+        return JSON.parse(t);
+      };
+
+      async function generateWorkoutAI({ apiKey, options, signal }) {
+        const body = {
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2048,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: buildUserPrompt(options) }],
+        };
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          signal,
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true",
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`API error ${res.status}: ${err.slice(0, 200)}`);
+        }
+        const json = await res.json();
+        const text = json.content?.[0]?.text || "";
+        const plan = parseLooseJSON(text);
+        plan._source = "ai";
+        return plan;
+      }
+
+      async function generateWorkoutLocal({ options, delay = true }) {
+        if (delay) await new Promise((r) => setTimeout(r, 700));
+        const cats = Array.isArray(options.categories) ? options.categories : [options.categories];
+        const presc = CYCLE_PRESCRIPTION[options.cycle] || CYCLE_PRESCRIPTION.hypertrophy;
+        const load = INTENSITY_LOAD[options.intensity] || INTENSITY_LOAD.moderate;
+        const condPresc = CONDITIONING_PRESCRIPTION[options.intensity] || CONDITIONING_PRESCRIPTION.moderate;
+        const levelCount = { beginner: 4, intermediate: 5, advanced: 6, elite: 7 }[options.level] || 5;
+        const slots = Math.max(cats.length, levelCount);
+
+        const groups = new Set(cats.map((id) => CATEGORIES.find((c) => c.id === id)?.group).filter(Boolean));
+        const warmupPool = [];
+        if (groups.has("strength")) warmupPool.push(...WARMUP_POOL.strength);
+        if (groups.has("conditioning")) warmupPool.push(...WARMUP_POOL.conditioning);
+        if (groups.has("cardio")) warmupPool.push(...WARMUP_POOL.cardio);
+        const warmup = shuffle(warmupPool.length ? warmupPool : WARMUP_POOL.strength).slice(0, 4);
+        const cooldown = shuffle(COOLDOWN_POOL).slice(0, 3);
+
+        const focus = options.bodyParts || ["full"];
+        const exercises = [];
+        const perCat = Math.max(1, Math.floor(slots / cats.length));
+        cats.forEach((catId, ci) => {
+          const cat = CATEGORIES.find((c) => c.id === catId);
+          let pool = LOCAL_EXERCISES[catId] || [];
+          if (cat?.group === "strength" || catId === "olympic") {
+            const filtered = pool.filter((e) => matchesBodyParts(e.name, focus));
+            if (filtered.length >= 2) pool = filtered;
+          }
+          const picks = shuffle(pool).slice(0, perCat);
+          for (const ex of picks) {
+            const isCardio = cat?.group === "cardio" || cat?.group === "conditioning";
+            const isOly = catId === "olympic";
+            exercises.push({
+              name: ex.name,
+              sets: isCardio ? condPresc.rounds : isOly ? Math.max(3, presc.sets - 1) : presc.sets,
+              reps: isCardio ? condPresc.work : isOly ? "1-3" : presc.reps,
+              tempo: isOly ? "X-0-1-0" : presc.tempo,
+              rest: isCardio ? condPresc.rest : isOly ? "2-3 min" : presc.rest,
+              load: isCardio ? "—" : isOly ? "70-85% 1RM" : load,
+              cue: ex.cue,
+              _group: cat?.group || "strength",
+              _ord: ci,
+            });
+          }
+        });
+        // sort: strength → conditioning → cardio
+        const order = { strength: 0, conditioning: 1, cardio: 2 };
+        exercises.sort((a, b) => (order[a._group] - order[b._group]) || (a._ord - b._ord));
+        exercises.forEach((e) => { delete e._group; delete e._ord; });
+
+        const verbBank =
+          options.intensity === "max"
+            ? ["Forge", "Summit", "Apex", "Detonate"]
+            : options.cycle === "deload"
+            ? ["Reset", "Recoup", "Recalibrate"]
+            : ["Build", "Hammer", "Carve", "Charge", "Drive"];
+        const catLabel = cats.length === 1
+          ? CATEGORIES.find((c) => c.id === cats[0])?.label
+          : cats.map((id) => CATEGORIES.find((c) => c.id === id)?.label).join(" + ");
+        const focusLabel = focus.includes("full") ? "" : ` · ${focus.map((p) => BODY_PARTS.find((b) => b.id === p)?.label).filter(Boolean).join("/")}`;
+        const title = `${rand(verbBank)} — ${catLabel}${focusLabel}`;
+        const tagline = pickQuote({ cycle: options.cycle, intensity: options.intensity, categories: cats });
+
+        return {
+          title,
+          tagline,
+          estimatedMinutes: 35 + exercises.length * 4,
+          warmup: warmup.map((w) => ({ name: w.name, duration: w.duration, cue: w.cue })),
+          mainBlock: exercises,
+          cooldown: cooldown.map((c) => ({ name: c.name, duration: c.duration, cue: c.cue })),
+          finisherNote: options.intensity === "max" ? "Optional finisher: 100 burpees for time." : "Walk 3 min. Hydrate. Note how today felt.",
+          _source: "local",
+        };
+      }
+
+      function shuffle(arr) {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      }
+
+      async function generateOneDay({ useLocal, apiKey, baseOpts, signal, dayLabel, focus }) {
+        const opts = { ...baseOpts, focusLabel: focus ? `Body-Part Focus: ${focus}` : null };
+        const plan = useLocal
+          ? await generateWorkoutLocal({ options: opts, delay: false })
+          : await generateWorkoutAI({ apiKey, options: opts, signal });
+        return { day: dayLabel, focus: focus || plan.title || dayLabel, isRest: false, plan };
+      }
+
+      async function generateMultiDayProgram({ useLocal, apiKey, baseOpts, dayCount, signal, onProgress }) {
+        const days = [];
+        for (let i = 0; i < dayCount; i++) {
+          const label = `Day ${i + 1}`;
+          onProgress?.({ completed: i, total: dayCount, day: label });
+          const d = await generateOneDay({ useLocal, apiKey, baseOpts, signal, dayLabel: label, focus: null });
+          days.push(d);
+        }
+        const cats = Array.isArray(baseOpts.categories) ? baseOpts.categories : [baseOpts.categories];
+        const catLabels = cats.map((id) => CATEGORIES.find((c) => c.id === id)?.label || id).join(" + ");
+        return {
+          type: "weekly",
+          title: `${dayCount}-Session Program — ${catLabels}`,
+          tagline: `${dayCount} sessions. Stack the work.`,
+          days,
+          _source: useLocal ? "local" : "ai",
+        };
+      }
+
+      async function generateWeeklyPlan({ useLocal, apiKey, baseOpts, daysPerWeek, signal, onProgress }) {
+        const split = WEEKLY_SPLITS[daysPerWeek] || WEEKLY_SPLITS[4];
+        const days = [];
+        const trainingDays = split.filter((d) => !d.isRest).length;
+        let completed = 0;
+        for (const slot of split) {
+          if (slot.isRest) {
+            days.push({ day: slot.day, focus: slot.focus, isRest: true, plan: null });
+          } else {
+            onProgress?.({ completed, total: trainingDays, day: slot.day });
+            const opts = { ...baseOpts, bodyParts: slot.parts };
+            const plan = useLocal
+              ? await generateWorkoutLocal({ options: opts, delay: false })
+              : await generateWorkoutAI({ apiKey, options: opts, signal });
+            days.push({ day: slot.day, focus: slot.focus, isRest: false, plan });
+            completed++;
+          }
+        }
+        const cats = Array.isArray(baseOpts.categories) ? baseOpts.categories : [baseOpts.categories];
+        const catLabels = cats.map((id) => CATEGORIES.find((c) => c.id === id)?.label || id).join(" + ");
+        return {
+          type: "weekly",
+          title: `Weekly Plan — ${catLabels}`,
+          tagline: "Mon–Sun. Stay consistent.",
+          days,
+          _source: useLocal ? "local" : "ai",
+        };
+      }
+
+      /* ------------------------------ Icon -------------------------------- */
+
+      const Icon = ({ name, className = "w-5 h-5" }) => {
+        const common = {
+          className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+          strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round",
+        };
+        switch (name) {
+          case "dumbbell":
+            return <svg {...common}><path d="M6 8v8M2 10v4M10 6v12M14 6v12M18 8v8M22 10v4" /></svg>;
+          case "flame":
+            return <svg {...common}><path d="M12 2s1 3 3 5-1 5 1 7a4 4 0 1 1-8 0c0-3 2-4 2-7 0-2 2-5 2-5z" /></svg>;
+          case "history":
+            return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 7v5l4 2" /></svg>;
+          case "chart":
+            return <svg {...common}><path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" /></svg>;
+          case "calendar":
+            return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
+          case "search":
+            return <svg {...common}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
+          case "pencil":
+            return <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>;
+          case "save":
+            return <svg {...common}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>;
+          case "settings":
+            return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1c.4.6 1 1 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>;
+          case "play":
+            return <svg {...common}><polygon points="6 3 20 12 6 21 6 3" /></svg>;
+          case "x":
+            return <svg {...common}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
+          case "swap":
+            return <svg {...common}><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>;
+          case "plus":
+            return <svg {...common}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
+          case "check":
+            return <svg {...common}><polyline points="20 6 9 17 4 12" /></svg>;
+          case "trash":
+            return <svg {...common}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>;
+          case "trophy":
+            return <svg {...common}><path d="M8 21h8M12 17v4" /><path d="M7 4h10v4a5 5 0 0 1-10 0V4z" /><path d="M17 5h2a2 2 0 0 1 0 4h-2M7 5H5a2 2 0 0 0 0 4h2" /></svg>;
+          case "bolt":
+            return <svg {...common}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>;
+          case "copy":
+            return <svg {...common}><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
+          default:
+            return null;
+        }
+      };
+
+      function IconBtn({ title, icon, onClick, active, activeColor = "gold", disabled }) {
+        const c = active ? (activeColor === "ember" ? "border-ember/50 text-ember" : "border-gold/50 text-gold") : "border-white/10 text-zinc-400";
+        return (
+          <button
+            type="button"
+            title={title}
+            disabled={disabled}
+            onClick={onClick}
+            className={`rounded-lg border ${c} p-2 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed`}
+          >
+            <Icon name={icon} className="w-4 h-4" />
+          </button>
+        );
+      }
+
+      /* ------------------------------- App -------------------------------- */
+
+      function App() {
+        const [tab, setTab] = useState("generator");
+        const [settings, setSettings] = useState(loadSettings);
+        const [settingsOpen, setSettingsOpen] = useState(false);
+        const [currentPlan, setCurrentPlan] = useState(null);
+        const [activeSession, setActiveSession] = useState(null);
+        const [refreshCounter, bumpRefresh] = useReducer((x) => x + 1, 0);
+        const [toast, setToast] = useState(null);
+
+        useEffect(() => { saveSettings(settings); }, [settings]);
+
+        useEffect(() => {
+          if (!toast) return;
+          const t = setTimeout(() => setToast(null), 3500);
+          return () => clearTimeout(t);
+        }, [toast]);
+
+        const showToast = (msg, color = "gold") => setToast({ msg, color });
+
+        const startWorkout = (plan, meta) => {
+          if (!plan) return;
+          const sets = (plan.mainBlock || []).map((ex, i) => ({
+            id: uid(),
+            exerciseIndex: i,
+            name: ex.name,
+            prescribed: { sets: ex.sets, reps: ex.reps, load: ex.load },
+            cue: ex.cue,
+            tempo: ex.tempo,
+            rest: ex.rest,
+            status: "pending",
+            substitution: "",
+            note: "",
+            sets: Array.from({ length: Number(ex.sets) || 1 }).map(() => ({
+              weight: "", reps: "", done: false,
+            })),
+          }));
+          setActiveSession({
+            id: uid(),
+            plan,
+            startedAt: Date.now(),
+            sets,
+            meta: meta || {},
+          });
+          setTab("logger");
+        };
+
+        const finishWorkout = (session) => {
+          const date = todayISO();
+          const stats = computeStats(session);
+          const record = {
+            id: session.id,
+            date,
+            startedAt: session.startedAt,
+            finishedAt: Date.now(),
+            durationMs: Date.now() - session.startedAt,
+            plan: session.plan,
+            sets: session.sets,
+            stats,
+            meta: session.meta || {},
+          };
+          saveWorkout(record);
+          // PR detection
+          const prs = loadPRs();
+          const prHit = [];
+          for (const ex of session.sets) {
+            const norm = normalizeExerciseName(ex.name);
+            if (!norm) continue;
+            for (const s of ex.sets) {
+              if (!s.done) continue;
+              const w = Number(s.weight); const r = Number(s.reps);
+              if (!w || !r) continue;
+              const e1 = epley(w, r);
+              const cur = prs[norm];
+              if (!cur || e1 > cur.estimated1RM) {
+                const next = { exercise: norm, weight: w, reps: r, estimated1RM: e1, date };
+                savePR(norm, next);
+                prs[norm] = next;
+                prHit.push(norm);
+              }
+            }
+          }
+          setActiveSession(null);
+          setTab("history");
+          bumpRefresh();
+          if (prHit.length) {
+            showToast(`PR! ${prHit.join(", ")}`, "gold");
+          } else {
+            showToast(`Saved · ${stats.setCount} sets · ${stats.tonnage}kg`);
+          }
+        };
+
+        const cancelWorkout = () => {
+          if (!confirm("Cancel this session? Logged sets will be lost.")) return;
+          setActiveSession(null);
+          setTab("generator");
+        };
+
+        const savePlanToLibrary = (plan, defaultName) => {
+          const name = prompt("Save as…", defaultName || plan.title || "My Plan");
+          if (!name) return;
+          const days = plan.type === "weekly" && Array.isArray(plan.days)
+            ? plan.days.map((d) => ({
+                id: uid(),
+                label: d.day || d.focus || "Day",
+                dow: DOW_SHORT_TO_INDEX[(d.day || "").toLowerCase()] ?? null,
+                focus: d.focus || "",
+                isRest: !!d.isRest,
+                plan: d.isRest ? null : d.plan || null,
+              }))
+            : [{
+                id: uid(),
+                label: plan.title || "Day 1",
+                dow: null,
+                focus: "",
+                isRest: false,
+                plan: { ...plan },
+              }];
+          const record = {
+            id: uid(),
+            type: "program",
+            name,
+            tagline: plan.tagline || "",
+            days,
+          };
+          savePlan(record);
+          bumpRefresh();
+          showToast(`Saved "${name}" to library`);
+        };
+
+        const tabs = [
+          { id: "generator", label: "Generate", icon: "flame" },
+          { id: "logger", label: "Train", icon: "dumbbell", disabled: !activeSession },
+          { id: "planner", label: "Plan", icon: "calendar" },
+          { id: "history", label: "History", icon: "history" },
+          { id: "progress", label: "Progress", icon: "chart" },
+        ];
+
+        return (
+          <div className="min-h-screen flex flex-col">
+            {/* HEADER */}
+            <header className="sticky top-0 z-40 bg-ink/85 backdrop-blur border-b border-white/5">
+              <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-md bg-gradient-to-br from-gold to-goldbright flex items-center justify-center text-ink">
+                    <Icon name="flame" className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="display text-xl text-white tracking-wider leading-none">FORGE</div>
+                    <div className="text-[10px] uppercase tracking-widest text-gold">AI Personal Trainer</div>
+                  </div>
+                  {activeSession && (
+                    <span className="ml-3 hidden sm:inline-flex items-center gap-2 text-xs text-gold">
+                      <span className="w-2 h-2 rounded-full bg-gold pulse-gold" />
+                      Session active
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setSettingsOpen(true)}
+                    className="rounded-lg border border-white/10 p-2 hover:bg-white/5 text-zinc-300"
+                    title="Settings"
+                  >
+                    <Icon name="settings" className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <nav className="max-w-6xl mx-auto px-2 sm:px-4 flex gap-1 overflow-x-auto">
+                {tabs.map((t) => (
+                  <button
+                    key={t.id}
+                    disabled={t.disabled}
+                    onClick={() => setTab(t.id)}
+                    className={`px-3 py-2 text-xs uppercase tracking-widest flex items-center gap-1.5 border-b-2 transition shrink-0 ${
+                      tab === t.id
+                        ? "border-gold text-gold"
+                        : t.disabled
+                        ? "border-transparent text-zinc-700 cursor-not-allowed"
+                        : "border-transparent text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    <Icon name={t.icon} className="w-3.5 h-3.5" /> {t.label}
+                  </button>
+                ))}
+              </nav>
+            </header>
+
+            {/* MAIN */}
+            <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+              {tab === "generator" && (
+                <Generator
+                  settings={settings}
+                  setSettings={setSettings}
+                  currentPlan={currentPlan}
+                  onGenerated={setCurrentPlan}
+                  onStart={startWorkout}
+                  onSavePlan={savePlanToLibrary}
+                  showToast={showToast}
+                />
+              )}
+              {tab === "logger" && activeSession && (
+                <ActiveWorkout
+                  session={activeSession}
+                  setSession={setActiveSession}
+                  onFinish={finishWorkout}
+                  onCancel={cancelWorkout}
+                />
+              )}
+              {tab === "planner" && (
+                <Planner
+                  refreshCounter={refreshCounter}
+                  bumpRefresh={bumpRefresh}
+                  onStart={startWorkout}
+                  showToast={showToast}
+                />
+              )}
+              {tab === "history" && <History refreshCounter={refreshCounter} bumpRefresh={bumpRefresh} />}
+              {tab === "progress" && <Progress refreshCounter={refreshCounter} />}
+            </main>
+
+            {settingsOpen && (
+              <SettingsModal
+                settings={settings}
+                setSettings={setSettings}
+                onClose={() => setSettingsOpen(false)}
+                showToast={showToast}
+                bumpRefresh={bumpRefresh}
+              />
+            )}
+
+            {toast && (
+              <div
+                className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-2xl ${
+                  toast.color === "gold"
+                    ? "bg-gold text-ink"
+                    : "bg-steel border border-gold/30 text-white"
+                }`}
+              >
+                {toast.msg}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function computeStats(session) {
+        let setCount = 0, tonnage = 0, repCount = 0;
+        for (const ex of session.sets) {
+          for (const s of ex.sets) {
+            if (!s.done) continue;
+            setCount++;
+            const w = Number(s.weight) || 0;
+            const r = Number(s.reps) || 0;
+            tonnage += w * r;
+            repCount += r;
+          }
+        }
+        return { setCount, tonnage: Math.round(tonnage), repCount };
+      }
+
+      /* ---------------------------- Generator ----------------------------- */
+
+      function Generator({ settings, setSettings, currentPlan, onGenerated, onStart, onSavePlan, showToast }) {
+        const [categories, setCategories] = useState(settings.favoriteCategories?.length ? settings.favoriteCategories : ["barbell"]);
+        const [intensity, setIntensity] = useState(settings.defaultIntensity);
+        const [level, setLevel] = useState(settings.defaultLevel);
+        const [cycle, setCycle] = useState(settings.defaultCycle);
+        const [bodyParts, setBodyParts] = useState(settings.defaultBodyParts || ["full"]);
+        const [planMode, setPlanMode] = useState(settings.defaultPlanMode || "single");
+        const [daysPerWeek, setDaysPerWeek] = useState(settings.defaultDaysPerWeek || 4);
+        const [sessionCount, setSessionCount] = useState(settings.defaultSessionCount || 1);
+        const [loading, setLoading] = useState(false);
+        const [extending, setExtending] = useState(false);
+        const [error, setError] = useState(null);
+        const [progress, setProgress] = useState(null);
+        const abortRef = useRef(null);
+
+        const useLocal = !settings.apiKey || settings.preferLocalCoach;
+
+        const toggleCategory = (id) => {
+          setCategories((curr) => {
+            if (curr.includes(id)) {
+              if (curr.length === 1) return curr;
+              return curr.filter((c) => c !== id);
+            }
+            return [...curr, id];
+          });
+        };
+
+        const toggleBodyPart = (id) => {
+          setBodyParts((curr) => {
+            if (id === "full") return ["full"];
+            const without = curr.filter((p) => p !== "full");
+            if (without.includes(id)) {
+              const next = without.filter((p) => p !== id);
+              return next.length ? next : ["full"];
+            }
+            return [...without, id];
+          });
+        };
+
+        const persistChoices = () => {
+          setSettings((s) => ({
+            ...s,
+            favoriteCategories: [...new Set(categories)].slice(0, 6),
+            defaultIntensity: intensity,
+            defaultLevel: level,
+            defaultCycle: cycle,
+            defaultBodyParts: bodyParts,
+            defaultPlanMode: planMode,
+            defaultDaysPerWeek: daysPerWeek,
+            defaultSessionCount: sessionCount,
+          }));
+        };
+
+        const handleGenerate = async () => {
+          setError(null);
+          setLoading(true);
+          setProgress(null);
+          persistChoices();
+          const ctrl = new AbortController();
+          abortRef.current = ctrl;
+          const baseOpts = { categories, intensity, level, cycle, bodyParts };
+          try {
+            let plan;
+            if (planMode === "weekly") {
+              plan = await generateWeeklyPlan({
+                useLocal,
+                apiKey: settings.apiKey,
+                baseOpts,
+                daysPerWeek,
+                signal: ctrl.signal,
+                onProgress: setProgress,
+              });
+            } else if (sessionCount > 1) {
+              plan = await generateMultiDayProgram({
+                useLocal,
+                apiKey: settings.apiKey,
+                baseOpts,
+                dayCount: sessionCount,
+                signal: ctrl.signal,
+                onProgress: setProgress,
+              });
+            } else {
+              plan = useLocal
+                ? await generateWorkoutLocal({ options: baseOpts })
+                : await generateWorkoutAI({ apiKey: settings.apiKey, options: baseOpts, signal: ctrl.signal });
+            }
+            onGenerated(plan);
+          } catch (e) {
+            if (e.name !== "AbortError") setError(e.message || String(e));
+          } finally {
+            setLoading(false);
+            setProgress(null);
+          }
+        };
+
+        const handleAbort = () => abortRef.current?.abort();
+
+        const handleGenerateMore = async () => {
+          if (!currentPlan) return;
+          setExtending(true);
+          setError(null);
+          const ctrl = new AbortController();
+          abortRef.current = ctrl;
+          const baseOpts = { categories, intensity, level, cycle, bodyParts };
+          try {
+            if (currentPlan.type === "weekly" && Array.isArray(currentPlan.days)) {
+              const trainingDays = currentPlan.days.filter((d) => !d.isRest).length;
+              const newDay = await generateOneDay({
+                useLocal,
+                apiKey: settings.apiKey,
+                baseOpts,
+                signal: ctrl.signal,
+                dayLabel: `Day ${trainingDays + 1}`,
+                focus: null,
+              });
+              const next = {
+                ...currentPlan,
+                days: [...currentPlan.days, newDay],
+                title: /\d+-Session Program/.test(currentPlan.title)
+                  ? currentPlan.title.replace(/^\d+/, String(trainingDays + 1))
+                  : currentPlan.title,
+              };
+              onGenerated(next);
+              showToast(`Added ${newDay.day}. ${next.days.length} workouts.`, "gold");
+            } else {
+              // promote single → weekly
+              const day1 = { day: "Day 1", focus: currentPlan.title || "Day 1", isRest: false, plan: { ...currentPlan } };
+              const newDay = await generateOneDay({
+                useLocal,
+                apiKey: settings.apiKey,
+                baseOpts,
+                signal: ctrl.signal,
+                dayLabel: "Day 2",
+                focus: null,
+              });
+              const cats = baseOpts.categories.map((id) => CATEGORIES.find((c) => c.id === id)?.label || id).join(" + ");
+              const promoted = {
+                type: "weekly",
+                title: `2-Session Program — ${cats}`,
+                tagline: "2 sessions. Stack the work.",
+                days: [day1, newDay],
+                _source: useLocal ? "local" : "ai",
+              };
+              onGenerated(promoted);
+              showToast("Added Day 2. 2 workouts.", "gold");
+            }
+          } catch (e) {
+            if (e.name !== "AbortError") setError(e.message || String(e));
+          } finally {
+            setExtending(false);
+          }
+        };
+
+        return (
+          <section className="space-y-6">
+            <div className={`rounded-2xl border p-4 sm:p-5 noise ${useLocal ? "border-ember/30 bg-ember/5" : "border-gold/30 bg-gold/5"}`}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className={`display text-2xl ${useLocal ? "text-ember" : "text-gold"}`}>
+                    {useLocal ? "Offline coach engaged" : "AI coach standing by"}
+                  </div>
+                  <div className="text-xs text-zinc-400 mt-1">
+                    {useLocal
+                      ? "No API key — using built-in pools. Open settings to add a key."
+                      : "Anthropic API key detected. Programs are written by Claude."}
+                  </div>
+                </div>
+                <div className={`text-[10px] uppercase tracking-widest ${useLocal ? "text-ember" : "text-gold"}`}>
+                  {useLocal ? "Offline" : "Online"}
+                </div>
+              </div>
+            </div>
+
+            {/* CATEGORIES */}
+            <div>
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="display text-2xl text-white">Category</h2>
+                <span className="text-xs text-gold">Stack your weapons · {categories.length} selected</span>
+              </div>
+              <div className="text-[11px] text-zinc-500 mb-3">Tap to stack multiple. At least one must stay selected.</div>
+              <div className="space-y-3">
+                {CATEGORY_GROUPS.map((g) => {
+                  const items = CATEGORIES.filter((c) => c.group === g.id);
+                  if (!items.length) return null;
+                  return (
+                    <div key={g.id}>
+                      <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5">{g.label}</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {items.map((c) => {
+                          const i = categories.indexOf(c.id);
+                          const active = i >= 0;
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => toggleCategory(c.id)}
+                              className={`relative text-left rounded-xl border p-3 transition ${active ? "border-gold/60 bg-gold/10" : "border-white/10 bg-steel/40 hover:border-white/30"}`}
+                            >
+                              {active && (
+                                <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-gold text-ink text-[10px] font-black flex items-center justify-center">
+                                  {i + 1}
+                                </span>
+                              )}
+                              <div className="font-semibold text-white text-sm">{c.label}</div>
+                              <div className="text-[11px] text-zinc-500 mt-0.5">{c.blurb}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* INTENSITY / LEVEL / CYCLE */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <PillGroup title="Intensity" options={INTENSITIES} value={intensity} onChange={setIntensity} />
+              <PillGroup title="Level" options={LEVELS} value={level} onChange={setLevel} />
+              <PillGroup title="Cycle" options={CYCLES} value={cycle} onChange={setCycle} />
+            </div>
+
+            {/* BODY PARTS */}
+            <div>
+              <h2 className="display text-2xl text-white mb-2">Body-Part Focus</h2>
+              <div className="flex flex-wrap gap-1.5">
+                {BODY_PARTS.map((b) => {
+                  const active = bodyParts.includes(b.id);
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => toggleBodyPart(b.id)}
+                      className={`text-[11px] uppercase tracking-widest px-2.5 py-1.5 rounded border ${active ? "border-gold bg-gold/20 text-gold" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}
+                    >
+                      {b.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* PLAN MODE */}
+            <div>
+              <h2 className="display text-2xl text-white mb-2">Plan Mode</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PLAN_MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setPlanMode(m.id)}
+                    className={`text-left rounded-xl border p-3 ${planMode === m.id ? "border-gold/60 bg-gold/10" : "border-white/10 bg-steel/40 hover:border-white/30"}`}
+                  >
+                    <div className="font-semibold text-white">{m.label}</div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">{m.blurb}</div>
+                  </button>
+                ))}
+              </div>
+
+              {planMode === "single" && (
+                <div className="mt-3 rounded-xl border border-white/10 bg-steel/30 p-3">
+                  <div className="text-[10px] uppercase tracking-widest text-gold mb-1">Sessions to generate</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setSessionCount(n)}
+                        className={`px-3 py-1.5 text-xs rounded border ${sessionCount === n ? "border-gold bg-gold/20 text-gold" : "border-white/10 text-zinc-400 hover:bg-white/5"}`}
+                      >
+                        {n} {n === 1 ? "session" : "sessions"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-[11px] text-zinc-500">
+                    Bundle N workouts into one plan (e.g. a Hyrox prep block). Days of the week get
+                    assigned later from the calendar — or use "Add Another Workout" on a 2+ preview
+                    to extend as you go.
+                  </div>
+                </div>
+              )}
+
+              {planMode === "weekly" && (
+                <div className="mt-3 rounded-xl border border-white/10 bg-steel/30 p-3">
+                  <div className="text-[10px] uppercase tracking-widest text-gold mb-1">Training days per week</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[3, 4, 5, 6].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setDaysPerWeek(n)}
+                        className={`px-3 py-1.5 text-xs rounded border ${daysPerWeek === n ? "border-gold bg-gold/20 text-gold" : "border-white/10 text-zinc-400 hover:bg-white/5"}`}
+                      >
+                        {n} days
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* GENERATE */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="flex-1 rounded-xl bg-gradient-to-r from-gold to-goldbright text-ink py-4 font-black display text-2xl tracking-wide shadow-gold disabled:opacity-50"
+              >
+                {loading ? (progress ? `Programming day ${progress.completed + 1}/${progress.total} — ${progress.day}…` : "Forging your session…") : "Generate Workout"}
+              </button>
+              {loading && (
+                <button
+                  onClick={handleAbort}
+                  className="rounded-xl border border-ember/40 text-ember px-4 font-bold hover:bg-ember/10"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            {error && (
+              <div className="rounded-lg border border-ember/40 bg-ember/10 text-ember text-sm px-4 py-2.5">
+                {error}
+              </div>
+            )}
+
+            {loading && !currentPlan && <SkeletonPreview />}
+
+            {!loading && currentPlan && currentPlan.type === "weekly" && (
+              <WeeklyPlanPreview
+                plan={currentPlan}
+                onStart={onStart}
+                onSave={onSavePlan}
+                onGenerateMore={handleGenerateMore}
+                extending={extending}
+              />
+            )}
+            {!loading && currentPlan && currentPlan.type !== "weekly" && (
+              <PlanPreview plan={currentPlan} onStart={() => onStart(currentPlan)} onSave={onSavePlan} />
+            )}
+
+            {!loading && !currentPlan && (
+              <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-zinc-500 text-sm">
+                Dial in your inputs, then generate. The coach is warming up.
+              </div>
+            )}
+          </section>
+        );
+      }
+
+      function PillGroup({ title, options, value, onChange }) {
+        return (
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">{title}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {options.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => onChange(o.id)}
+                  className={`text-[11px] uppercase tracking-widest px-2.5 py-1.5 rounded border ${value === o.id ? "border-gold bg-gold/20 text-gold" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      function SkeletonPreview() {
+        return (
+          <div className="rounded-2xl border border-white/10 overflow-hidden">
+            <div className="h-32 shimmer" />
+            <div className="p-5 space-y-3">
+              <div className="h-4 w-1/3 shimmer rounded" />
+              <div className="h-4 w-2/3 shimmer rounded" />
+              <div className="h-4 w-1/2 shimmer rounded" />
+            </div>
+          </div>
+        );
+      }
+
+      function FullSessionBody({ plan }) {
+        return (
+          <div>
+            {plan.warmup?.length > 0 && (
+              <BlockList title="Warm-up" items={plan.warmup} />
+            )}
+            <div className="p-5 sm:p-6 border-t border-white/10">
+              <div className="display text-xl text-white mb-3">Main Block</div>
+              <div className="grid grid-cols-1 gap-2">
+                {(plan.mainBlock || []).map((ex, i) => (
+                  <ExerciseCard key={i} idx={i} ex={ex} />
+                ))}
+              </div>
+            </div>
+            {plan.cooldown?.length > 0 && <BlockList title="Cool-down" items={plan.cooldown} />}
+            {plan.finisherNote && (
+              <div className="p-5 border-t border-white/10 text-xs text-gold/80 italic">
+                Finisher · {plan.finisherNote}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function PlanPreview({ plan, onStart, onSave }) {
+        return (
+          <div className="rounded-2xl border border-gold/40 bg-gradient-to-br from-carbon via-steel to-carbon overflow-hidden shadow-gold">
+            <div className="p-5 sm:p-6 border-b border-white/10 flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="display text-3xl sm:text-4xl text-white">{plan.title}</div>
+                <div className="text-gold text-sm mt-1 italic">"{plan.tagline}"</div>
+                <div className="text-xs text-zinc-500 mt-2">
+                  ~{plan.estimatedMinutes || "?"} min · {plan.mainBlock?.length || 0} exercises
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                <button
+                  onClick={onStart}
+                  className="rounded-xl bg-gradient-to-r from-ember to-emberbright text-black px-5 py-3 font-black display text-xl shadow-ember hover:brightness-110"
+                >
+                  <Icon name="play" className="w-4 h-4 inline mr-2 -mt-0.5" />
+                  Start
+                </button>
+                {onSave && (
+                  <button
+                    onClick={() => onSave(plan)}
+                    className="rounded-lg border border-gold/50 text-gold px-3 py-2 text-xs font-bold hover:bg-gold/10"
+                  >
+                    Save Plan
+                  </button>
+                )}
+              </div>
+            </div>
+            <FullSessionBody plan={plan} />
+          </div>
+        );
+      }
+
+      function WeeklyPlanPreview({ plan, onStart, onSave, onGenerateMore, extending }) {
+        const [expanded, setExpanded] = useState(null);
+        return (
+          <div className="rounded-2xl border border-gold/40 bg-gradient-to-br from-carbon via-steel to-carbon overflow-hidden shadow-gold">
+            <div className="p-5 sm:p-6 border-b border-white/10 flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="display text-3xl sm:text-4xl text-white">{plan.title}</div>
+                <div className="text-gold text-sm mt-1 italic">"{plan.tagline}"</div>
+                <div className="text-xs text-zinc-500 mt-2">
+                  {plan.days.filter((d) => !d.isRest).length} training days ·{" "}
+                  {plan.days.filter((d) => d.isRest).length} rest
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                {onGenerateMore && (
+                  <button
+                    onClick={onGenerateMore}
+                    disabled={extending}
+                    className="rounded-lg border border-ember/60 text-ember px-3 py-2 text-xs font-bold hover:bg-ember/10 disabled:opacity-50 flex items-center gap-1 justify-center"
+                  >
+                    <Icon name="plus" className="w-3.5 h-3.5" />
+                    {extending ? "Generating…" : "Add Another Workout"}
+                  </button>
+                )}
+                {onSave && (
+                  <button
+                    onClick={() => onSave(plan)}
+                    className="rounded-lg border border-gold/50 text-gold px-3 py-2 text-xs font-bold hover:bg-gold/10"
+                  >
+                    Save Plan
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="divide-y divide-white/5">
+              {plan.days.map((d, idx) => {
+                const isOpen = expanded === idx;
+                return (
+                  <div key={idx}>
+                    <div
+                      onClick={() => !d.isRest && setExpanded(isOpen ? null : idx)}
+                      className={`w-full flex items-center gap-3 px-5 py-4 text-left ${d.isRest ? "opacity-70 cursor-default" : "cursor-pointer hover:bg-white/5"}`}
+                    >
+                      <div className={`display text-xl w-12 shrink-0 ${d.isRest ? "text-zinc-600" : "text-gold"}`}>{d.day}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white truncate">
+                          {d.isRest ? d.focus : d.plan?.title || d.focus}
+                        </div>
+                        <div className="text-xs text-zinc-500 truncate">
+                          {d.isRest
+                            ? "Rest / mobility / sleep. Recovery is training."
+                            : `${d.focus} · ${d.plan?.mainBlock?.length || 0} exercises · ~${d.plan?.estimatedMinutes || "?"} min`}
+                        </div>
+                      </div>
+                      {!d.isRest && (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onStart(d.plan, { weeklyDay: d.day, weeklyFocus: d.focus }); }}
+                            className="shrink-0 rounded-lg bg-gradient-to-r from-ember to-emberbright text-black px-3 py-1.5 text-xs font-bold"
+                          >
+                            Start
+                          </button>
+                          <div className="text-zinc-500 text-xs w-4 text-right">{isOpen ? "▲" : "▼"}</div>
+                        </>
+                      )}
+                    </div>
+                    {isOpen && !d.isRest && d.plan && (
+                      <div className="border-t border-white/10 bg-black/20">
+                        <FullSessionBody plan={d.plan} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      function BlockList({ title, items }) {
+        return (
+          <div className="p-5 sm:p-6 border-t border-white/10">
+            <div className="display text-xl text-white mb-3">{title}</div>
+            <div className="space-y-2">
+              {items.map((it, i) => (
+                <div key={i} className="flex items-start gap-3 rounded-lg bg-steel/60 border border-white/5 p-3">
+                  <div className="display text-lg text-zinc-500 w-6">{i + 1}</div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">{it.name}</div>
+                    <div className="text-xs text-zinc-500">{it.duration}</div>
+                    {it.cue && <div className="text-xs text-gold/80 mt-1 italic">"{it.cue}"</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      function ExerciseCard({ idx, ex }) {
+        return (
+          <div className="rounded-xl border border-white/10 bg-steel/60 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs text-zinc-500">EXERCISE {idx + 1}</div>
+                <div className="text-lg font-bold text-white">{ex.name}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="display text-2xl text-gold leading-none">
+                  {ex.sets}×{ex.reps}
+                </div>
+                <div className="text-[10px] uppercase tracking-widest text-zinc-500 mt-1">
+                  {ex.tempo} · {ex.rest}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              <div className="rounded-md bg-black/30 px-2 py-1">
+                <span className="text-zinc-500 mr-1">Load</span>
+                <span className="text-white">{ex.load}</span>
+              </div>
+              {ex.cue && (
+                <div className="rounded-md bg-black/30 px-2 py-1 col-span-2 sm:col-span-2">
+                  <span className="text-gold/80 italic">"{ex.cue}"</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      /* ----------------------------- Logger ------------------------------- */
+
+      function ActiveWorkout({ session, setSession, onFinish, onCancel }) {
+        const [now, setNow] = useState(Date.now());
+        useEffect(() => {
+          const i = setInterval(() => setNow(Date.now()), 1000);
+          return () => clearInterval(i);
+        }, []);
+        const totalSets = session.sets.reduce((s, ex) => s + ex.sets.length, 0);
+        const doneSets = session.sets.reduce((s, ex) => s + ex.sets.filter((x) => x.done).length, 0);
+
+        const updateExercise = (i, patch) => {
+          setSession({ ...session, sets: session.sets.map((ex, idx) => idx === i ? { ...ex, ...patch } : ex) });
+        };
+
+        return (
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-gold/30 bg-carbon p-4 sm:p-5 sticky top-[88px] z-30">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="display text-2xl sm:text-3xl text-white truncate">{session.plan.title}</div>
+                  <div className="text-[11px] text-gold uppercase tracking-widest mt-1">In session</div>
+                </div>
+                <div className="text-right">
+                  <div className="display text-2xl text-gold leading-none">{formatDuration(now - session.startedAt)}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-zinc-500 mt-1">Elapsed</div>
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-gold to-goldbright" style={{ width: `${Math.min(100, (doneSets / Math.max(1, totalSets)) * 100)}%` }} />
+                </div>
+                <div className="text-xs text-zinc-500 mt-1.5">{doneSets}/{totalSets} sets</div>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button onClick={() => onFinish(session)} className="flex-1 rounded-lg bg-gradient-to-r from-gold to-goldbright text-ink py-2.5 font-bold text-sm">
+                  Finish & Save
+                </button>
+                <button onClick={onCancel} className="rounded-lg border border-ember/40 text-ember px-4 text-sm font-bold hover:bg-ember/10">
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {session.sets.map((ex, i) => (
+                <LoggerCard key={ex.id} ex={ex} onChange={(patch) => updateExercise(i, patch)} />
+              ))}
+            </div>
+          </section>
+        );
+      }
+
+      function LoggerCard({ ex, onChange }) {
+        const setStatus = (status) => onChange({ status, substitution: status === "substituted" ? (prompt("Replace with…", ex.substitution) || "") : ex.substitution });
+        const setRow = (i, patch) => onChange({ sets: ex.sets.map((s, idx) => idx === i ? { ...s, ...patch } : s) });
+        const addRow = () => onChange({ sets: [...ex.sets, { weight: "", reps: "", done: false }] });
+        const removeRow = (i) => onChange({ sets: ex.sets.filter((_, idx) => idx !== i) });
+        const statusColor = ex.status === "completed" ? "border-gold/50 bg-gold/5" : ex.status === "skipped" ? "border-ember/40 bg-ember/5" : ex.status === "substituted" ? "border-ember/30 bg-steel" : "border-white/10";
+        return (
+          <div className={`rounded-xl border ${statusColor} p-3 sm:p-4`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-bold text-white">
+                  {ex.status === "substituted" && ex.substitution ? <><span className="line-through text-zinc-500 mr-1">{ex.name}</span>{ex.substitution}</> : ex.name}
+                </div>
+                <div className="text-xs text-zinc-500">
+                  Prescribed: {ex.prescribed.sets}×{ex.prescribed.reps} · {ex.prescribed.load} · {ex.tempo} · {ex.rest}
+                </div>
+                {ex.cue && <div className="text-[11px] text-gold/80 italic mt-1">"{ex.cue}"</div>}
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <IconBtn title="Done" icon="check" onClick={() => setStatus("completed")} active={ex.status === "completed"} />
+                <IconBtn title="Skip" icon="x" onClick={() => setStatus("skipped")} active={ex.status === "skipped"} activeColor="ember" />
+                <IconBtn title="Substitute" icon="swap" onClick={() => setStatus("substituted")} active={ex.status === "substituted"} activeColor="ember" />
+              </div>
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {ex.sets.map((s, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-7 text-[10px] uppercase tracking-widest text-zinc-500">Set {i + 1}</div>
+                  <input type="number" placeholder="kg" value={s.weight} onChange={(e) => setRow(i, { weight: e.target.value })} className="flex-1 rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60" />
+                  <input type="number" placeholder="reps" value={s.reps} onChange={(e) => setRow(i, { reps: e.target.value })} className="w-20 rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60" />
+                  <button onClick={() => setRow(i, { done: !s.done })} className={`shrink-0 rounded-md border px-2 py-1.5 ${s.done ? "border-gold bg-gold text-ink" : "border-white/10 text-zinc-400 hover:bg-white/5"}`}>
+                    <Icon name="check" className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => removeRow(i)} className="text-zinc-600 hover:text-ember p-1" title="Remove set">
+                    <Icon name="x" className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button onClick={addRow} className="text-xs text-gold hover:underline flex items-center gap-1 mt-1">
+                <Icon name="plus" className="w-3 h-3" /> Add set
+              </button>
+            </div>
+            <input
+              placeholder="Notes (form, how it felt)…"
+              value={ex.note}
+              onChange={(e) => onChange({ note: e.target.value })}
+              className="w-full mt-3 rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60"
+            />
+          </div>
+        );
+      }
+
+      /* ----------------------------- History ------------------------------ */
+
+      function History({ refreshCounter, bumpRefresh }) {
+        const [items, setItems] = useState([]);
+        const [filterCat, setFilterCat] = useState("all");
+        const [days, setDays] = useState(90);
+        const [expanded, setExpanded] = useState(null);
+
+        useEffect(() => { setItems(loadAllWorkouts()); }, [refreshCounter]);
+
+        const filtered = useMemo(() => {
+          const cutoff = Date.now() - days * 86400000;
+          return items.filter((w) => {
+            if ((w.finishedAt || 0) < cutoff) return false;
+            if (filterCat === "all") return true;
+            return guessCategory(w.plan?.title || "") === filterCat;
+          });
+        }, [items, filterCat, days]);
+
+        return (
+          <section className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white">
+                <option value="all">All categories</option>
+                {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+              <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white">
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+                <option value={365}>Last year</option>
+                <option value={3650}>All time</option>
+              </select>
+              <span className="text-xs text-zinc-500">{filtered.length} sessions</span>
+            </div>
+            {filtered.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-zinc-500 text-sm">
+                No sessions logged yet. Start one from the generator.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filtered.map((w) => (
+                  <div key={w.id} className="rounded-xl border border-white/10 bg-steel/40 overflow-hidden">
+                    <button onClick={() => setExpanded(expanded === w.id ? null : w.id)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-white/5">
+                      <div className="display text-xl text-gold shrink-0 w-16">{formatDate(w.date).slice(0, 6)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white truncate">{w.plan?.title || "Session"}</div>
+                        <div className="text-xs text-zinc-500">{w.stats.setCount} sets · {w.stats.tonnage}kg · {formatDuration(w.durationMs)}</div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (confirm("Delete this session?")) { deleteWorkout(w.date, w.id); bumpRefresh(); } }}
+                        className="text-zinc-500 hover:text-ember p-1"
+                      >
+                        <Icon name="trash" className="w-4 h-4" />
+                      </button>
+                    </button>
+                    {expanded === w.id && (
+                      <div className="border-t border-white/10 p-3 space-y-2">
+                        {w.sets.map((ex, i) => (
+                          <div key={i} className="rounded-md bg-black/30 p-2">
+                            <div className="text-sm font-semibold text-white">{ex.substitution || ex.name}</div>
+                            <div className="text-xs text-zinc-500">
+                              {ex.sets.filter((s) => s.done).map((s) => `${s.weight}×${s.reps}`).join(" · ") || "—"}
+                            </div>
+                            {ex.note && <div className="text-[11px] text-gold/70 italic mt-1">"{ex.note}"</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      }
+
+      /* ----------------------------- Progress ----------------------------- */
+
+      function Progress({ refreshCounter }) {
+        const [workouts, setWorkouts] = useState([]);
+        const [prs, setPRs] = useState({});
+        useEffect(() => { setWorkouts(loadAllWorkouts()); setPRs(loadPRs()); }, [refreshCounter]);
+
+        return (
+          <section className="space-y-6">
+            <PRWall workouts={workouts} />
+            <div className="space-y-4">
+              <h2 className="display text-2xl text-white">Key Lifts</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {KEY_LIFTS.map((lift) => (
+                  <LiftChart key={lift} lift={lift} workouts={workouts} pr={prs[lift]} />
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function PRWall({ workouts }) {
+        const data = useMemo(() => {
+          // 8 weeks ISO Monday-anchored
+          const weeks = [];
+          const today = new Date();
+          const day = today.getDay() || 7; // Sun=0 → 7
+          const monday = new Date(today);
+          monday.setDate(today.getDate() - (day - 1));
+          monday.setHours(0, 0, 0, 0);
+          for (let i = 7; i >= 0; i--) {
+            const start = new Date(monday); start.setDate(monday.getDate() - i * 7);
+            const end = new Date(start); end.setDate(start.getDate() + 7);
+            const ws = workouts.filter((w) => {
+              const t = w.finishedAt || 0;
+              return t >= start.getTime() && t < end.getTime();
+            });
+            const sets = ws.reduce((s, w) => s + (w.stats?.setCount || 0), 0);
+            const tonnage = ws.reduce((s, w) => s + (w.stats?.tonnage || 0), 0);
+            weeks.push({ wk: `${start.getMonth() + 1}/${start.getDate()}`, sets, tonnage });
+          }
+          return weeks;
+        }, [workouts]);
+
+        return (
+          <div className="rounded-2xl border border-white/10 bg-steel/40 p-4 sm:p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Icon name="trophy" className="w-5 h-5 text-gold" />
+              <h2 className="display text-2xl text-white">Weekly Volume — 8 weeks</h2>
+            </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data}>
+                  <CartesianGrid stroke="#222" vertical={false} />
+                  <XAxis dataKey="wk" stroke="#666" fontSize={10} />
+                  <YAxis stroke="#666" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "#111", border: "1px solid #333" }} />
+                  <Legend />
+                  <Bar dataKey="sets" fill="#d4af37" name="Sets" />
+                  <Bar dataKey="tonnage" fill="#ff6a1a" name="Tonnage (kg)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      }
+
+      function LiftChart({ lift, workouts, pr }) {
+        const data = useMemo(() => {
+          const points = [];
+          for (const w of workouts) {
+            for (const ex of w.sets || []) {
+              const norm = normalizeExerciseName(ex.name);
+              if (norm !== lift) continue;
+              let topW = 0, topR = 0;
+              for (const s of ex.sets || []) {
+                if (!s.done) continue;
+                const wt = Number(s.weight); const r = Number(s.reps);
+                if (!wt) continue;
+                if (wt > topW) { topW = wt; topR = r; }
+              }
+              if (topW > 0) {
+                points.push({ date: w.date, top: topW, e1: epley(topW, topR) });
+              }
+            }
+          }
+          return points.sort((a, b) => a.date.localeCompare(b.date));
+        }, [workouts, lift]);
+
+        return (
+          <div className="rounded-xl border border-white/10 bg-steel/40 p-4">
+            <div className="flex items-baseline justify-between mb-2">
+              <div className="display text-lg text-white">{lift}</div>
+              {pr && <div className="text-xs text-gold">PR e1RM {pr.estimated1RM}kg · {pr.weight}×{pr.reps}</div>}
+            </div>
+            {data.length === 0 ? (
+              <div className="text-xs text-zinc-500 italic py-6 text-center">No data yet.</div>
+            ) : (
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data}>
+                    <CartesianGrid stroke="#222" vertical={false} />
+                    <XAxis dataKey="date" stroke="#666" fontSize={9} />
+                    <YAxis stroke="#666" fontSize={9} />
+                    <Tooltip contentStyle={{ background: "#111", border: "1px solid #333" }} />
+                    <Line type="monotone" dataKey="top" stroke="#d4af37" name="Top set" dot={false} />
+                    <Line type="monotone" dataKey="e1" stroke="#ff6a1a" name="e1RM" dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      /* ----------------------------- Planner ------------------------------ */
+
+      function programDayLabel(d) {
+        if (d == null) return "";
+        if (d.dow != null && d.dow >= 0 && d.dow < 7) return DOW_FULL[d.dow];
+        return d.label || "Day";
+      }
+      function programDayShort(d) {
+        if (d == null) return "";
+        if (d.dow != null && d.dow >= 0 && d.dow < 7) return DOW_LABELS[d.dow];
+        return (d.label || "Day").slice(0, 6);
+      }
+
+      function blankPlan() {
+        return {
+          id: uid(),
+          type: "program",
+          name: "Untitled Plan",
+          tagline: "Earn it.",
+          days: [
+            { id: uid(), label: "Day 1", dow: null, focus: "", isRest: false, plan: blankSession() },
+          ],
+        };
+      }
+      function blankSession() {
+        return {
+          id: uid(),
+          title: "New Session",
+          tagline: "",
+          estimatedMinutes: 45,
+          warmup: [],
+          mainBlock: [],
+          cooldown: [],
+          finisherNote: "",
+        };
+      }
+
+      function Planner({ refreshCounter, bumpRefresh, onStart, showToast }) {
+        const [view, setView] = useState("library");
+        const [editingPlanId, setEditingPlanId] = useState(null);
+        const [plans, setPlans] = useState([]);
+
+        useEffect(() => { setPlans(loadAllPlans()); }, [refreshCounter]);
+
+        const editingPlan = useMemo(() => {
+          if (!editingPlanId) return null;
+          if (editingPlanId === "__new__") return blankPlan();
+          return plans.find((p) => p.id === editingPlanId);
+        }, [editingPlanId, plans]);
+
+        return (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex gap-1 rounded-lg border border-white/10 p-0.5">
+                <button onClick={() => setView("library")} className={`px-3 py-1.5 text-xs uppercase tracking-widest rounded ${view === "library" ? "bg-gold text-ink" : "text-zinc-400"}`}>Library</button>
+                <button onClick={() => setView("calendar")} className={`px-3 py-1.5 text-xs uppercase tracking-widest rounded ${view === "calendar" ? "bg-gold text-ink" : "text-zinc-400"}`}>Calendar</button>
+              </div>
+              <button onClick={() => setEditingPlanId("__new__")} className="rounded-lg bg-gradient-to-r from-gold to-goldbright text-ink px-3 py-1.5 text-xs font-bold flex items-center gap-1">
+                <Icon name="plus" className="w-3.5 h-3.5" /> New Plan
+              </button>
+            </div>
+            {view === "library" ? (
+              <PlannerLibrary
+                plans={plans}
+                onEdit={(id) => setEditingPlanId(id)}
+                onDuplicate={(p) => {
+                  const copy = JSON.parse(JSON.stringify(p));
+                  copy.id = uid();
+                  copy.name = `${p.name} (copy)`;
+                  copy.days = (copy.days || []).map((d) => ({ ...d, id: uid() }));
+                  savePlan(copy); bumpRefresh();
+                  showToast("Plan duplicated");
+                }}
+                onDelete={(p) => { if (confirm(`Delete "${p.name}"?`)) { deletePlan(p.id); bumpRefresh(); showToast("Plan deleted"); } }}
+                onStart={onStart}
+              />
+            ) : (
+              <PlannerCalendar
+                plans={plans}
+                onStart={onStart}
+                bumpRefresh={bumpRefresh}
+                showToast={showToast}
+              />
+            )}
+            {editingPlan && (
+              <PlanEditor
+                plan={editingPlan}
+                onClose={() => setEditingPlanId(null)}
+                onSave={(p) => { savePlan(p); bumpRefresh(); setEditingPlanId(null); showToast("Plan saved"); }}
+              />
+            )}
+          </section>
+        );
+      }
+
+      function PlannerLibrary({ plans, onEdit, onDuplicate, onDelete, onStart }) {
+        const [q, setQ] = useState("");
+        const filtered = useMemo(() => {
+          if (!q.trim()) return plans;
+          const k = q.toLowerCase();
+          return plans.filter((p) => {
+            if ((p.name || "").toLowerCase().includes(k)) return true;
+            if ((p.tagline || "").toLowerCase().includes(k)) return true;
+            for (const d of p.days || []) {
+              if ((d.plan?.title || "").toLowerCase().includes(k)) return true;
+              for (const e of d.plan?.mainBlock || []) {
+                if ((e.name || "").toLowerCase().includes(k)) return true;
+              }
+            }
+            return false;
+          });
+        }, [plans, q]);
+
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
+              <Icon name="search" className="w-4 h-4 text-zinc-500" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search plans, sessions, exercises…" className="flex-1 bg-transparent outline-none text-sm" />
+            </div>
+            {filtered.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-zinc-500 text-sm">
+                {plans.length === 0 ? "No plans yet. Generate or create a plan to start your library." : "No matches for that search."}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {filtered.map((p) => (
+                  <PlanCard key={p.id} plan={p} onEdit={() => onEdit(p.id)} onDuplicate={() => onDuplicate(p)} onDelete={() => onDelete(p)} onStart={onStart} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function PlanCard({ plan, onEdit, onDuplicate, onDelete, onStart }) {
+        const trainDays = (plan.days || []).filter((d) => !d.isRest);
+        const isMulti = trainDays.length > 1;
+        return (
+          <div className="rounded-xl border border-white/10 bg-steel/40 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-widest text-gold">{isMulti ? `${trainDays.length}-Day Program` : "Single Session"}</div>
+                <div className="display text-xl text-white truncate">{plan.name}</div>
+                {plan.tagline && <div className="text-xs text-gold/80 italic">"{plan.tagline}"</div>}
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <IconBtn title="Edit" icon="pencil" onClick={onEdit} />
+                <IconBtn title="Duplicate" icon="copy" onClick={onDuplicate} />
+                <IconBtn title="Delete" icon="trash" onClick={onDelete} activeColor="ember" />
+              </div>
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-2">
+              {(plan.days || []).length} workout{(plan.days || []).length === 1 ? "" : "s"}
+              {plan.updatedAt && ` · updated ${new Date(plan.updatedAt).toLocaleDateString()}`}
+            </div>
+            <div className="mt-3">
+              {isMulti ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {plan.days.map((d) => (
+                    <button
+                      key={d.id}
+                      disabled={d.isRest}
+                      onClick={() => onStart(d.plan, { weeklyDay: programDayShort(d), weeklyFocus: d.focus, programDayId: d.id })}
+                      className={`text-[11px] uppercase tracking-widest px-2.5 py-1.5 rounded border ${d.isRest ? "border-white/5 text-zinc-600" : "border-ember/40 text-ember hover:bg-ember/10"}`}
+                    >
+                      {programDayShort(d)}{d.isRest ? " · rest" : ""}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button
+                  onClick={() => onStart(plan.days[0]?.plan, { programDayId: plan.days[0]?.id })}
+                  disabled={!plan.days[0]?.plan}
+                  className="rounded-lg bg-gradient-to-r from-ember to-emberbright text-black px-3 py-1.5 text-xs font-bold flex items-center gap-1 disabled:opacity-30"
+                >
+                  <Icon name="play" className="w-3 h-3" /> Start
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function PlannerCalendar({ plans, onStart, bumpRefresh, showToast }) {
+        const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+        const [selected, setSelected] = useState(todayISO());
+        const [scheduleMap, setScheduleMap] = useState({});
+        useEffect(() => { setScheduleMap(loadAllSchedule()); }, [bumpRefresh]);
+
+        const monthStart = useMemo(() => new Date(cursor), [cursor]);
+        const monthGrid = useMemo(() => {
+          const first = new Date(monthStart);
+          const startDow = first.getDay(); // Sun=0
+          const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+          const cells = [];
+          for (let i = 0; i < startDow; i++) cells.push(null);
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dt = new Date(first.getFullYear(), first.getMonth(), d);
+            cells.push(dt.toISOString().slice(0, 10));
+          }
+          return cells;
+        }, [monthStart]);
+
+        const planFromRecord = (entry) => {
+          const p = plans.find((x) => x.id === entry.planId);
+          if (!p) return null;
+          const days = p.days || [];
+          if (!entry.dayKey) return { record: p, day: days[0] };
+          const day = days.find((d) => d.id === entry.dayKey)
+            || days.find((d) => programDayShort(d) === entry.dayKey || d.label === entry.dayKey);
+          return { record: p, day: day || days[0] };
+        };
+
+        const entries = scheduleMap[selected] || [];
+
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-steel/40 p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-3">
+                <button onClick={() => { const d = new Date(cursor); d.setMonth(d.getMonth() - 1); setCursor(d); }} className="rounded border border-white/10 px-2 py-1 text-sm hover:bg-white/5">‹</button>
+                <div className="display text-xl text-white">{monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</div>
+                <button onClick={() => { const d = new Date(cursor); d.setMonth(d.getMonth() + 1); setCursor(d); }} className="rounded border border-white/10 px-2 py-1 text-sm hover:bg-white/5">›</button>
+              </div>
+              <div className="grid grid-cols-7 text-[10px] uppercase tracking-widest text-zinc-500 mb-1">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => <div key={d} className="text-center py-1">{d}</div>)}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {monthGrid.map((iso, i) => {
+                  if (!iso) return <div key={i} />;
+                  const isToday = iso === todayISO();
+                  const isSelected = iso === selected;
+                  const list = scheduleMap[iso] || [];
+                  return (
+                    <button key={iso} onClick={() => setSelected(iso)} className={`aspect-square rounded-md border p-1 text-left flex flex-col gap-1 hover:bg-white/5 ${isSelected ? "border-gold ring-1 ring-gold" : isToday ? "border-ember/60" : "border-white/10"}`}>
+                      <div className={`text-xs font-bold ${isToday ? "text-ember" : "text-white"}`}>{iso.slice(8)}</div>
+                      <div className="space-y-0.5 overflow-hidden">
+                        {list.slice(0, 2).map((e) => {
+                          const p = plans.find((x) => x.id === e.planId);
+                          return <div key={e.id} className="text-[9px] truncate text-gold">{p?.name || "—"}</div>;
+                        })}
+                        {list.length > 2 && <div className="text-[9px] text-zinc-500">+{list.length - 2}</div>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-steel/40 p-3 sm:p-4">
+              <div className="display text-lg text-white mb-2">{formatDate(selected)}</div>
+              {entries.length === 0 ? (
+                <div className="text-xs text-zinc-500 italic">Nothing scheduled.</div>
+              ) : (
+                <div className="space-y-2">
+                  {entries.map((e) => {
+                    const r = planFromRecord(e);
+                    if (!r) return (
+                      <div key={e.id} className="rounded-md border border-white/10 p-2 text-xs text-zinc-500 italic">(deleted plan)</div>
+                    );
+                    return (
+                      <div key={e.id} className="rounded-md border border-white/10 bg-black/30 p-2 flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-white truncate">{r.record.name}</div>
+                          <div className="text-[11px] text-zinc-500 truncate">{programDayLabel(r.day)} · {r.day?.focus || (r.day?.plan?.title || "Session")}</div>
+                        </div>
+                        {!r.day?.isRest && r.day?.plan && (
+                          <button onClick={() => onStart(r.day.plan, { weeklyDay: programDayShort(r.day), weeklyFocus: r.day.focus, programDayId: r.day.id })} className="rounded bg-gradient-to-r from-ember to-emberbright text-black px-2 py-1 text-xs font-bold">
+                            Start
+                          </button>
+                        )}
+                        <button onClick={() => { removeFromSchedule(selected, e.id); bumpRefresh(); }} className="text-zinc-500 hover:text-ember p-1"><Icon name="x" className="w-3.5 h-3.5" /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <SchedulePicker plans={plans} onAdd={(planId, dayKey) => { addToSchedule(selected, planId, dayKey); bumpRefresh(); showToast("Scheduled"); }} />
+            </div>
+          </div>
+        );
+      }
+
+      function SchedulePicker({ plans, onAdd }) {
+        const [planId, setPlanId] = useState(plans[0]?.id || "");
+        const plan = plans.find((p) => p.id === planId);
+        const [dayKey, setDayKey] = useState(plan?.days?.[0]?.id || "");
+        useEffect(() => { setDayKey(plan?.days?.[0]?.id || ""); }, [planId]);
+        if (plans.length === 0) return null;
+        const isMulti = (plan?.days || []).length > 1;
+        return (
+          <div className="mt-3 border-t border-white/10 pt-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-widest text-gold">Add to this date</div>
+            <select value={planId} onChange={(e) => setPlanId(e.target.value)} className="w-full rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white">
+              {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {isMulti && (
+              <select value={dayKey} onChange={(e) => setDayKey(e.target.value)} className="w-full rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white">
+                {plan.days.map((d) => <option key={d.id} value={d.id}>{programDayLabel(d)}{d.isRest ? " · rest" : ""}</option>)}
+              </select>
+            )}
+            <button onClick={() => onAdd(planId, dayKey || null)} className="w-full rounded-md bg-gradient-to-r from-gold to-goldbright text-ink px-3 py-2 text-sm font-bold">
+              Schedule
+            </button>
+          </div>
+        );
+      }
+
+      /* ---------------------------- Plan Editor --------------------------- */
+
+      function PlanEditor({ plan, onClose, onSave }) {
+        const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(plan)));
+        const [activeDayId, setActiveDayId] = useState(() => plan.days?.[0]?.id || null);
+        const [pickerBlock, setPickerBlock] = useState(null);
+
+        const patchDraft = (p) => setDraft((d) => ({ ...d, ...p }));
+        const patchDay = (id, p) => setDraft((d) => ({ ...d, days: d.days.map((x) => x.id === id ? { ...x, ...p } : x) }));
+        const addDay = () => {
+          const id = uid();
+          setDraft((d) => ({ ...d, days: [...d.days, { id, label: `Day ${d.days.length + 1}`, dow: null, focus: "", isRest: false, plan: blankSession() }] }));
+          setActiveDayId(id);
+        };
+        const removeDay = (id) => {
+          setDraft((d) => ({ ...d, days: d.days.filter((x) => x.id !== id) }));
+          if (activeDayId === id) {
+            const remaining = draft.days.filter((d) => d.id !== id);
+            setActiveDayId(remaining[0]?.id || null);
+          }
+        };
+        const activeDay = (draft.days || []).find((d) => d.id === activeDayId);
+        const setActiveSession = (next) => {
+          if (!activeDay) return;
+          patchDay(activeDay.id, { plan: next });
+        };
+        const addFromPicker = (item) => {
+          if (!activeDay || !pickerBlock) return;
+          const session = activeDay.plan || blankSession();
+          const next = { ...session, [pickerBlock]: [...(session[pickerBlock] || []), item] };
+          patchDay(activeDay.id, { plan: next });
+        };
+
+        const programLabel = (draft.days || []).length > 1 ? `${draft.days.length}-Day Program` : "Single Session";
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm overflow-y-auto">
+            <div className="min-h-screen flex items-start justify-center p-4">
+              <div className="w-full max-w-4xl rounded-2xl border border-gold/30 bg-carbon shadow-gold overflow-hidden my-4">
+                <div className="p-4 border-b border-white/10 flex items-center justify-between gap-3 sticky top-0 bg-carbon z-10">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-widest text-gold">{programLabel} · Editor</div>
+                    <div className="display text-2xl text-white truncate">{draft.name || "Untitled Plan"}</div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={onClose} className="rounded-lg border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5">Cancel</button>
+                    <button onClick={() => onSave(draft)} className="rounded-lg bg-gradient-to-r from-gold to-goldbright text-ink px-3 py-1.5 text-sm font-bold flex items-center gap-1"><Icon name="save" className="w-3.5 h-3.5" /> Save</button>
+                  </div>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <LabeledInput label="Plan Name" value={draft.name || ""} onChange={(v) => patchDraft({ name: v })} />
+                    <LabeledInput label="Tagline" value={draft.tagline || ""} onChange={(v) => patchDraft({ tagline: v })} />
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[10px] uppercase tracking-widest text-gold">Workouts ({(draft.days || []).length})</div>
+                      <button onClick={addDay} className="text-xs rounded border border-gold/40 text-gold px-2 py-1 hover:bg-gold/10 flex items-center gap-1">
+                        <Icon name="plus" className="w-3 h-3" /> Add Workout
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mb-2 italic">
+                      Bundle the workouts now. Assign days of the week later, from the calendar.
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(draft.days || []).map((d) => (
+                        <button
+                          key={d.id}
+                          onClick={() => setActiveDayId(d.id)}
+                          className={`text-[11px] uppercase tracking-widest px-2.5 py-1.5 rounded border ${d.id === activeDayId ? "border-gold bg-gold/20 text-gold" : d.isRest ? "border-white/5 text-zinc-600 hover:text-zinc-400" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}
+                          title={d.focus || d.label}
+                        >
+                          {programDayShort(d)}{d.isRest ? " · rest" : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {activeDay && (
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] uppercase tracking-widest text-gold">Workout Settings</div>
+                        <button onClick={() => removeDay(activeDay.id)} disabled={(draft.days || []).length <= 1} className="text-xs text-ember disabled:opacity-30 hover:underline flex items-center gap-1">
+                          <Icon name="trash" className="w-3 h-3" /> Remove Workout
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <LabeledInput label="Workout Label" value={activeDay.label || ""} onChange={(v) => patchDay(activeDay.id, { label: v })} />
+                        <LabeledInput label="Focus" value={activeDay.focus || ""} onChange={(v) => patchDay(activeDay.id, { focus: v })} />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-zinc-300">
+                        <input type="checkbox" checked={!!activeDay.isRest} onChange={(e) => patchDay(activeDay.id, { isRest: e.target.checked, plan: e.target.checked ? null : (activeDay.plan || blankSession()) })} />
+                        Rest day
+                      </label>
+                    </div>
+                  )}
+
+                  {activeDay && !activeDay.isRest && activeDay.plan ? (
+                    <SessionEditor session={activeDay.plan} setSession={setActiveSession} onPickFor={(block) => setPickerBlock(block)} />
+                  ) : activeDay?.isRest ? (
+                    <div className="rounded-lg border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500">Rest day — no session to edit.</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            {pickerBlock && (
+              <MovementPicker block={pickerBlock} onClose={() => setPickerBlock(null)} onPick={addFromPicker} />
+            )}
+          </div>
+        );
+      }
+
+      function SessionEditor({ session, setSession, onPickFor }) {
+        const patch = (p) => setSession({ ...session, ...p });
+        const patchBlockItem = (block, idx, v) => patch({ [block]: session[block].map((x, i) => i === idx ? v : x) });
+        const removeBlockItem = (block, idx) => patch({ [block]: session[block].filter((_, i) => i !== idx) });
+
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <LabeledInput label="Session Title" value={session.title || ""} onChange={(v) => patch({ title: v })} />
+              <LabeledInput label="Session Tagline" value={session.tagline || ""} onChange={(v) => patch({ tagline: v })} />
+              <LabeledInput label="Estimated Minutes" type="number" value={session.estimatedMinutes || ""} onChange={(v) => patch({ estimatedMinutes: Number(v) || 0 })} />
+              <LabeledInput label="Finisher Note" value={session.finisherNote || ""} onChange={(v) => patch({ finisherNote: v })} />
+            </div>
+
+            <EditorSection
+              title="Warm-up"
+              items={session.warmup || []}
+              onAdd={() => onPickFor("warmup")}
+              addLabel="Browse Warm-ups"
+              renderItem={(it, idx) => (
+                <BlockItemEditor item={it} onChange={(v) => patchBlockItem("warmup", idx, v)} onRemove={() => removeBlockItem("warmup", idx)} />
+              )}
+            />
+            <EditorSection
+              title="Main Block"
+              items={session.mainBlock || []}
+              onAdd={() => onPickFor("mainBlock")}
+              addLabel="Browse Exercises"
+              renderItem={(ex, idx) => (
+                <ExerciseEditor ex={ex} onChange={(v) => patchBlockItem("mainBlock", idx, v)} onRemove={() => removeBlockItem("mainBlock", idx)} />
+              )}
+            />
+            <EditorSection
+              title="Cool-down"
+              items={session.cooldown || []}
+              onAdd={() => onPickFor("cooldown")}
+              addLabel="Browse Cool-downs"
+              renderItem={(it, idx) => (
+                <BlockItemEditor item={it} onChange={(v) => patchBlockItem("cooldown", idx, v)} onRemove={() => removeBlockItem("cooldown", idx)} />
+              )}
+            />
+          </div>
+        );
+      }
+
+      function MovementPicker({ block, onClose, onPick }) {
+        const [query, setQuery] = useState("");
+        const [filter, setFilter] = useState("all");
+        const [addedNames, setAddedNames] = useState(() => new Set());
+        const handlePick = (it, name) => {
+          onPick(it);
+          setAddedNames((prev) => { const n = new Set(prev); n.add(name); return n; });
+        };
+
+        const config = useMemo(() => {
+          if (block === "mainBlock") {
+            return {
+              title: "Exercise Library",
+              source: EXERCISE_LIBRARY,
+              toItem: (ex) => ({ name: ex.name, ...ex.defaults }),
+              filters: [
+                { id: "all", label: "All" },
+                { id: "push", label: "Push" },
+                { id: "pull", label: "Pull" },
+                { id: "legs", label: "Legs" },
+                { id: "core", label: "Core" },
+                { id: "olympic", label: "Olympic" },
+                { id: "conditioning", label: "Conditioning" },
+                { id: "full", label: "Full Body" },
+              ],
+              matchFilter: (ex, f) => {
+                if (f === "all") return true;
+                if (f === "olympic") return ex.pattern === "olympic";
+                if (f === "conditioning") return ex.pattern === "conditioning" || ex.pattern === "plyometric";
+                return (ex.parts || []).includes(f);
+              },
+              renderMeta: (ex) => (
+                <>
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-widest">{ex.parts?.slice(0, 3).join(" · ") || ex.pattern}</div>
+                  <div className="text-[10px] text-zinc-600">{ex.defaults.sets}×{ex.defaults.reps} · {ex.defaults.rest} · {ex.defaults.load}</div>
+                </>
+              ),
+            };
+          }
+          const source = block === "warmup" ? WARMUP_LIBRARY : COOLDOWN_LIBRARY;
+          return {
+            title: block === "warmup" ? "Warm-up Library" : "Cool-down Library",
+            source,
+            toItem: (it) => ({ name: it.name, duration: it.duration, cue: it.cue }),
+            filters: [],
+            matchFilter: () => true,
+            renderMeta: (it) => <div className="text-[10px] text-zinc-500 uppercase tracking-widest">{it.duration}</div>,
+          };
+        }, [block]);
+
+        const results = useMemo(() => {
+          const q = query.trim().toLowerCase();
+          return config.source.filter((ex) => {
+            if (!config.matchFilter(ex, filter)) return false;
+            if (!q) return true;
+            const hay = [ex.name, ex.pattern, ...(ex.parts || []), ...(ex.equipment || []), ex.cue].filter(Boolean).join(" ").toLowerCase();
+            return hay.includes(q);
+          });
+        }, [query, filter, config]);
+
+        return (
+          <div className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm overflow-y-auto">
+            <div className="min-h-screen flex items-start justify-center p-4">
+              <div className="w-full max-w-2xl rounded-2xl border border-gold/40 bg-carbon shadow-gold overflow-hidden my-4">
+                <div className="p-4 border-b border-white/10 sticky top-0 bg-carbon z-10">
+                  <div className="text-[10px] uppercase tracking-widest text-gold">Library</div>
+                  <div className="display text-2xl text-white">{config.title}</div>
+                  {addedNames.size > 0 && (
+                    <div className="text-[11px] text-gold/80 mt-1">{addedNames.size} added to this section</div>
+                  )}
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
+                    <Icon name="search" className="w-4 h-4 text-zinc-500" />
+                    <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${config.title.toLowerCase()}…`} className="flex-1 bg-transparent outline-none text-sm placeholder-zinc-600" />
+                    {query && <button onClick={() => setQuery("")} className="text-zinc-500 hover:text-white text-xs">clear</button>}
+                  </div>
+                  {config.filters.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {config.filters.map((f) => (
+                        <button key={f.id} onClick={() => setFilter(f.id)} className={`text-[10px] uppercase tracking-widest px-2 py-1 rounded border ${filter === f.id ? "border-gold bg-gold/20 text-gold" : "border-white/10 text-zinc-400 hover:bg-white/5"}`}>{f.label}</button>
+                      ))}
+                    </div>
+                  )}
+                  {results.length === 0 ? (
+                    <div className="text-sm text-zinc-500 italic py-8 text-center">No matches. Try clearing the filter.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto pr-1">
+                      {results.map((it, i) => {
+                        const added = addedNames.has(it.name);
+                        return (
+                          <button key={`${it.name}-${i}`} onClick={() => handlePick(config.toItem(it), it.name)} className={`text-left rounded-lg border p-3 transition ${added ? "border-gold/60 bg-gold/10" : "border-white/10 bg-black/30 hover:border-gold/50 hover:bg-gold/5"}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-sm font-semibold text-white">{it.name}</div>
+                              {added ? <Icon name="check" className="w-4 h-4 text-gold shrink-0 mt-0.5" /> : <Icon name="plus" className="w-4 h-4 text-gold shrink-0 mt-0.5" />}
+                            </div>
+                            {config.renderMeta(it)}
+                            {it.cue && <div className="text-[10px] text-gold/70 italic mt-1 line-clamp-2">"{it.cue}"</div>}
+                            {added && <div className="text-[10px] text-gold mt-1 uppercase tracking-widest">Added · tap to add another</div>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 border-t border-white/10 sticky bottom-0 bg-carbon">
+                  <button onClick={onClose} className="w-full rounded-xl bg-gradient-to-r from-ember to-emberbright text-black px-5 py-3 font-black display text-lg shadow-ember hover:brightness-110">
+                    Done{addedNames.size > 0 ? ` · ${addedNames.size} added` : ""}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function EditorSection({ title, items, onAdd, addLabel = "Add", renderItem }) {
+        return (
+          <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <div className="display text-lg text-gold">{title}</div>
+              <button onClick={onAdd} className="text-xs rounded border border-gold/40 text-gold px-2 py-1 hover:bg-gold/10 flex items-center gap-1 shrink-0">
+                <Icon name="search" className="w-3 h-3" /> {addLabel}
+              </button>
+            </div>
+            {items.length === 0 ? (
+              <div className="text-xs text-zinc-600 italic mb-2">Empty.</div>
+            ) : (
+              <div className="space-y-2 mb-2">{items.map((it, i) => <div key={i}>{renderItem(it, i)}</div>)}</div>
+            )}
+            <button onClick={onAdd} className="w-full rounded-lg border border-dashed border-gold/40 text-gold px-3 py-2 text-xs font-bold hover:bg-gold/10 flex items-center justify-center gap-1.5">
+              <Icon name="plus" className="w-4 h-4" /> Add more
+            </button>
+          </div>
+        );
+      }
+
+      function BlockItemEditor({ item, onChange, onRemove }) {
+        const patch = (p) => onChange({ ...item, ...p });
+        return (
+          <div className="rounded-lg border border-white/10 bg-steel/60 p-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <LabeledInput label="Movement" value={item.name || ""} onChange={(v) => patch({ name: v })} />
+              <LabeledInput label="Duration" value={item.duration || ""} onChange={(v) => patch({ duration: v })} />
+              <LabeledInput label="Cue" value={item.cue || ""} onChange={(v) => patch({ cue: v })} />
+            </div>
+            <button onClick={onRemove} className="mt-1 text-[11px] text-ember hover:underline flex items-center gap-1">
+              <Icon name="trash" className="w-3 h-3" /> Remove
+            </button>
+          </div>
+        );
+      }
+
+      function ExerciseEditor({ ex, onChange, onRemove }) {
+        const patch = (p) => onChange({ ...ex, ...p });
+        return (
+          <div className="rounded-lg border border-white/10 bg-steel/60 p-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <LabeledInput label="Exercise" value={ex.name || ""} onChange={(v) => patch({ name: v })} />
+              <LabeledInput label="Sets" type="number" value={ex.sets || ""} onChange={(v) => patch({ sets: Number(v) || 0 })} />
+              <LabeledInput label="Reps" value={ex.reps || ""} onChange={(v) => patch({ reps: v })} />
+              <LabeledInput label="Tempo" value={ex.tempo || ""} onChange={(v) => patch({ tempo: v })} />
+              <LabeledInput label="Rest" value={ex.rest || ""} onChange={(v) => patch({ rest: v })} />
+              <LabeledInput label="Load" value={ex.load || ""} onChange={(v) => patch({ load: v })} />
+            </div>
+            <LabeledInput label="Cue" value={ex.cue || ""} onChange={(v) => patch({ cue: v })} />
+            <button onClick={onRemove} className="mt-1 text-[11px] text-ember hover:underline flex items-center gap-1">
+              <Icon name="trash" className="w-3 h-3" /> Remove
+            </button>
+          </div>
+        );
+      }
+
+      function LabeledInput({ label, value, onChange, type = "text" }) {
+        return (
+          <label className="block">
+            <span className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1">{label}</span>
+            <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60" />
+          </label>
+        );
+      }
+
+      /* ---------------------------- Settings ------------------------------ */
+
+      function SettingsModal({ settings, setSettings, onClose, showToast, bumpRefresh }) {
+        const [draft, setDraft] = useState(settings);
+        const patch = (p) => setDraft((d) => ({ ...d, ...p }));
+        const save = () => { setSettings(draft); onClose(); showToast("Settings saved"); };
+        const wipeAll = () => {
+          if (!confirm("Wipe ALL local data? Workouts, plans, PRs, settings.")) return;
+          for (const k of window.storage.keys()) window.storage.removeItem(k);
+          setSettings({ ...DEFAULT_SETTINGS });
+          bumpRefresh();
+          onClose();
+          showToast("All data wiped");
+        };
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+            <div className="w-full max-w-lg rounded-2xl border border-gold/30 bg-carbon shadow-gold my-4">
+              <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                <div className="display text-2xl text-white">Settings</div>
+                <button onClick={onClose} className="rounded-lg border border-white/10 p-2 hover:bg-white/5"><Icon name="x" className="w-4 h-4" /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                <label className="block">
+                  <span className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Anthropic API Key</span>
+                  <input type="password" value={draft.apiKey || ""} onChange={(e) => patch({ apiKey: e.target.value })} placeholder="sk-ant-…" className="w-full rounded-md bg-black/40 border border-white/10 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60" />
+                  <span className="block text-[11px] text-zinc-500 mt-1">Optional — without a key, the app uses the built-in offline coach.</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                  <input type="checkbox" checked={!!draft.preferLocalCoach} onChange={(e) => patch({ preferLocalCoach: e.target.checked })} />
+                  Force offline coach (skip the API)
+                </label>
+                <div className="flex justify-between gap-2 pt-2 border-t border-white/10">
+                  <button onClick={wipeAll} className="rounded-md border border-ember/40 text-ember px-3 py-1.5 text-xs font-bold hover:bg-ember/10">Wipe data</button>
+                  <button onClick={save} className="rounded-md bg-gradient-to-r from-gold to-goldbright text-ink px-3 py-1.5 text-sm font-bold">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      /* ----------------------------- mount -------------------------------- */
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

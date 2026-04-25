@@ -3,3 +3,6 @@
 .env.local
 *.log
 .claude/
+node_modules/
+dist/
+*.local
